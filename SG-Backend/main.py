@@ -36,7 +36,12 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 # Configure Gemini API
-client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+api_key = os.getenv("GEMINI_API_KEY")
+if api_key:
+    client = genai.Client(api_key=api_key)
+else:
+    print("WARNING: GEMINI_API_KEY environment variable not set. AI Chatbot features will not work.")
+    client = None
 
 
 # ==========================================
@@ -154,34 +159,43 @@ class User(Base):
 # ==========================================
 # Schema Migrations (به‌روزرسانی خودکار دیتابیس)
 # ==========================================
+from sqlalchemy import inspect
+
+
 def upgrade_database_schema(engine):
     """
     Safely adds new columns to the SQLite/PostgreSQL database
     if they don't already exist.
     """
+    inspector = inspect(engine)
+
+    # Check what tables exist to avoid errors if the database is completely empty
+    if not inspector.has_table("Employees"):
+        return
+
     with engine.connect() as conn:
         # Check if father_name exists in Employees
-        try:
-            conn.execute(text("SELECT father_name FROM \"Employees\" LIMIT 1"))
-        except Exception:
-            # Catch the error meaning the column doesn't exist, so we add it
+        employees_columns = [col['name'] for col in inspector.get_columns("Employees")]
+        if "father_name" not in employees_columns:
             try:
                 conn.execute(text("ALTER TABLE \"Employees\" ADD COLUMN father_name VARCHAR DEFAULT '-'"))
                 conn.execute(text("ALTER TABLE \"Employees\" ADD COLUMN province VARCHAR DEFAULT '-'"))
                 conn.commit()
             except Exception as e:
+                conn.rollback()
                 print(f"Migration Notice (Employees): {str(e)}")
 
         # Check if check_in exists in Attendances
-        try:
-            conn.execute(text("SELECT check_in FROM \"Attendances\" LIMIT 1"))
-        except Exception:
-            try:
-                conn.execute(text("ALTER TABLE \"Attendances\" ADD COLUMN check_in VARCHAR"))
-                conn.execute(text("ALTER TABLE \"Attendances\" ADD COLUMN check_out VARCHAR"))
-                conn.commit()
-            except Exception as e:
-                print(f"Migration Notice (Attendances): {str(e)}")
+        if inspector.has_table("Attendances"):
+            attendances_columns = [col['name'] for col in inspector.get_columns("Attendances")]
+            if "check_in" not in attendances_columns:
+                try:
+                    conn.execute(text("ALTER TABLE \"Attendances\" ADD COLUMN check_in VARCHAR"))
+                    conn.execute(text("ALTER TABLE \"Attendances\" ADD COLUMN check_out VARCHAR"))
+                    conn.commit()
+                except Exception as e:
+                    conn.rollback()
+                    print(f"Migration Notice (Attendances): {str(e)}")
 
 
 # اجرای مایگریشن‌ها قبل از ایجاد جداول
@@ -410,6 +424,10 @@ async def chat_endpoint(request: ChatRequest):
         for msg in request.history:
             role = "user" if msg.role == "user" else "model"
             gemini_history.append({"role": role, "parts": [{"text": msg.content}]})
+
+        if not client:
+            return JSONResponse(status_code=500, content={
+                "reply": "خطا: کلید API جمنای (GEMINI_API_KEY) در سرور تنظیم نشده است. لطفا آن را در فایل .env تنظیم کنید."})
 
         try:
             chat = client.chats.create(
