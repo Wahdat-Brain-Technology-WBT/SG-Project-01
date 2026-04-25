@@ -244,7 +244,12 @@ export default function AdminPanel() {
     orders: true
   });
   const [isSidebarOpen, setSidebarOpen] = useState(true);
-  const [token, setToken] = useState('dummy_token'); // Bypassed login
+  const [token, setToken] = useState<string | null>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('admin_token') || null;
+    }
+    return null;
+  });
   const [loginData, setLoginData] = useState({ username: '', password: '' });
 
   const [products, setProducts] = useState<any[]>([]);
@@ -910,6 +915,73 @@ export default function AdminPanel() {
       </button>
     );
   };
+
+  if (!token) {
+    return (
+      <div className={`min-h-screen bg-gray-50 dark:bg-slate-950 flex flex-col justify-center py-12 sm:px-6 lg:px-8 ${isRTL ? 'font-[Vazirmatn]' : ''}`} dir={isRTL ? 'rtl' : 'ltr'}>
+        <div className="sm:mx-auto sm:w-full sm:max-w-md">
+          <div className="mx-auto w-16 h-16 bg-blue-700 rounded-xl flex items-center justify-center text-white font-bold text-3xl shadow-xl shadow-blue-600/30">
+            SG
+          </div>
+          <h2 className="mt-6 text-center text-3xl font-black text-gray-900 dark:text-white">
+            {lang === 'dr' ? 'ورود به سیستم مدیریت' : lang === 'ps' ? 'سیسټم ته ننوتل' : 'Sign in to Admin Panel'}
+          </h2>
+        </div>
+
+        <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
+          <div className="bg-white dark:bg-slate-900 py-8 px-4 shadow-2xl shadow-blue-900/5 sm:rounded-3xl sm:px-10 border border-gray-100 dark:border-slate-800">
+            <form className="space-y-6" onSubmit={handleLogin}>
+              <div>
+                <label className="block text-sm font-bold text-gray-700 dark:text-gray-300">
+                  {lang === 'dr' || lang === 'ps' ? 'نام کاربری' : 'Username'}
+                </label>
+                <div className="mt-1">
+                  <input
+                    type="text"
+                    required
+                    value={loginData.username}
+                    onChange={(e) => setLoginData({...loginData, username: e.target.value})}
+                    className="appearance-none block w-full px-4 py-3 border border-gray-300 dark:border-slate-700 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white dark:bg-slate-800 text-gray-900 dark:text-white font-sans text-start"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-gray-700 dark:text-gray-300">
+                  {lang === 'dr' || lang === 'ps' ? 'رمز عبور' : 'Password'}
+                </label>
+                <div className="mt-1">
+                  <input
+                    type="password"
+                    required
+                    value={loginData.password}
+                    onChange={(e) => setLoginData({...loginData, password: e.target.value})}
+                    className="appearance-none block w-full px-4 py-3 border border-gray-300 dark:border-slate-700 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white dark:bg-slate-800 text-gray-900 dark:text-white font-sans text-start"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <button
+                  type="submit"
+                  disabled={isSaving}
+                  className="w-full flex justify-center py-3 px-4 border border-transparent rounded-xl shadow-sm text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all disabled:opacity-50"
+                >
+                  {lang === 'dr' ? 'ورود' : lang === 'ps' ? 'ننوتل' : 'Sign in'}
+                </button>
+              </div>
+            </form>
+
+            {toast && (
+              <div className={`mt-4 p-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 ${toast.type === 'error' ? 'bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400' : 'bg-green-50 text-green-600 dark:bg-green-900/20 dark:text-green-400'}`}>
+                {toast.message}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={`min-h-screen bg-gray-50 dark:bg-slate-950 flex ${isRTL ? 'flex-row-reverse' : 'flex-row'}`}>
