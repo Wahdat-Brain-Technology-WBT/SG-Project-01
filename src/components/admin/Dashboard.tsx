@@ -95,7 +95,7 @@ export default function Dashboard({ theme, lang, t }: DashboardProps) {
       return {
         name: shortName,
         fullName: fullJalaliDate,
-        dateStr: d.toISOString().split('T')[0],
+        dateStr: d.toLocaleDateString('en-CA'),
         income: 0,
         expense: 0,
         profitMargin: 0
@@ -105,7 +105,7 @@ export default function Dashboard({ theme, lang, t }: DashboardProps) {
     // Populate with ledger data
     safeLedger.forEach(l => {
       if (!l.date && !l.createdAt) return;
-      const lDate = new Date(l.date || l.createdAt).toISOString().split('T')[0];
+      const lDate = new Date(l.date || l.createdAt).toLocaleDateString('en-CA');
       const dayEntry = data.find(d => d.dateStr === lDate);
       if (dayEntry) {
         if (l.type === 'INCOME') dayEntry.income += l.amount;
@@ -129,7 +129,7 @@ export default function Dashboard({ theme, lang, t }: DashboardProps) {
     if (!selectedDay) return [];
     return safeLedger.filter(l => {
       if (!l.date && !l.createdAt) return false;
-      const lDate = new Date(l.date || l.createdAt).toISOString().split('T')[0];
+      const lDate = new Date(l.date || l.createdAt).toLocaleDateString('en-CA');
       return lDate === selectedDay.dateStr;
     });
   }, [selectedDay, safeLedger]);

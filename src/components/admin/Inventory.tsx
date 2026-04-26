@@ -6,6 +6,8 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { useApi } from '../../hooks/useApi';
 import toast from 'react-hot-toast';
+import { MagicInput, handleKeyboardNavigation, toEnglishDigits } from '../../utils/magicUx';
+import { API_URL } from '../../config';
 
 interface Product {
   id: number;
@@ -23,18 +25,6 @@ interface InventoryProps {
   theme: 'light' | 'dark';
   lang: 'dr' | 'ps' | 'en';
 }
-
-// Utility: Convert Persian/Arabic digits to English digits
-const toEnglishDigits = (str: string | number): string => {
-  if (str === null || str === undefined) return '';
-  let result = str.toString();
-  const persianNumbers = [/۰/g, /۱/g, /۲/g, /۳/g, /۴/g, /۵/g, /۶/g, /۷/g, /۸/g, /۹/g];
-  const arabicNumbers  = [/٠/g, /١/g, /٢/g, /٣/g, /٤/g, /٥/g, /٦/g, /٧/g, /٨/g, /٩/g];
-  for (let i = 0; i < 10; i++) {
-    result = result.replace(persianNumbers[i], i.toString()).replace(arabicNumbers[i], i.toString());
-  }
-  return result;
-};
 
 // Utility: Format numbers with English digits only
 const formatNumber = (val: number | string) => {
@@ -89,7 +79,6 @@ export default function Inventory({ theme, lang }: InventoryProps) {
     setIsSaving(true);
     try {
       const token = localStorage.getItem('admin_token');
-      const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
 
       const payload = {
         current_price: Number(toEnglishDigits(quickEditData.current_price)) || 0,
@@ -140,7 +129,6 @@ export default function Inventory({ theme, lang }: InventoryProps) {
     setIsAdding(true);
     try {
       const token = localStorage.getItem('admin_token');
-      const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
 
       const payload = {
         name: newProduct.name,
@@ -200,7 +188,7 @@ export default function Inventory({ theme, lang }: InventoryProps) {
     setIsDeleting(true);
     try {
       const token = localStorage.getItem('admin_token');
-      const res = await fetch(`/api/products/${deleteId}`, {
+      const res = await fetch(`${API_URL}/api/products/${deleteId}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -441,7 +429,7 @@ export default function Inventory({ theme, lang }: InventoryProps) {
                   <X size={24} />
                 </button>
               </div>
-              <form onSubmit={handleAddSave} className="p-6 space-y-4">
+              <form onSubmit={handleAddSave} onKeyDown={handleKeyboardNavigation} className="p-6 space-y-4">
                 <div className="grid grid-cols-3 gap-4">
                   <div>
                     <label className="block mb-2 text-sm font-bold text-gray-900 dark:text-white">
@@ -459,7 +447,7 @@ export default function Inventory({ theme, lang }: InventoryProps) {
                     <label className="block mb-2 text-sm font-bold text-gray-900 dark:text-white">
                       {lang === 'en' ? 'Product Code' : 'کد محصول'}
                     </label>
-                    <input
+                    <MagicInput
                       type="text"
                       value={newProduct.code}
                       onChange={e => setNewProduct({...newProduct, code: e.target.value})}
@@ -485,11 +473,11 @@ export default function Inventory({ theme, lang }: InventoryProps) {
                     <label className="block mb-2 text-sm font-bold text-gray-900 dark:text-white">
                       {lang === 'en' ? 'Size' : 'سایز'}
                     </label>
-                    <input
+                    <MagicInput
                       type="text"
                       required
                       value={newProduct.size}
-                      onChange={e => setNewProduct({...newProduct, size: toEnglishDigits(e.target.value)})}
+                      onChange={e => setNewProduct({...newProduct, size: e.target.value})}
                       className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-xl focus:ring-blue-500 focus:border-blue-500 block w-full p-3 dark:bg-slate-800 dark:border-slate-700 dark:text-white font-mono"
                       dir="ltr"
                     />

@@ -8,6 +8,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell
 } from 'recharts';
 import { exportToCSV, toEnglishDigits } from '../../lib/utils';
+import { handleKeyboardNavigation } from '../../utils/magicUx';
 
 interface LedgerProps {
   ledger: any[];
@@ -24,13 +25,13 @@ interface LedgerProps {
   todayWeekday: string;
 }
 
-export default function Ledger({ 
-  ledger, 
-  fetchData, 
-  onAddExpense, 
-  isSaving, 
-  lang, 
-  t, 
+export default function Ledger({
+  ledger,
+  fetchData,
+  onAddExpense,
+  isSaving,
+  lang,
+  t,
   theme,
   formatJalaliDateOnly,
   chartData,
@@ -42,14 +43,15 @@ export default function Ledger({
   const [ledgerFilter, setLedgerFilter] = useState('ALL');
   const [searchTerm, setSearchTerm] = useState('');
 
-  const handleAdd = async () => {
+  const handleAdd = async (e?: React.FormEvent) => {
+    if(e) e.preventDefault();
     await onAddExpense(newExpense);
     setNewExpense({ description: '', amount: '', department: 'GENERAL' });
   };
 
   const filteredLedger = ledger.filter(l => {
     const matchesDept = ledgerFilter === 'ALL' || l.department === ledgerFilter;
-    const matchesSearch = l.description.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    const matchesSearch = l.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          l.amount.toString().includes(searchTerm);
     return matchesDept && matchesSearch;
   });
@@ -95,8 +97,8 @@ export default function Ledger({
             </div>
             <h2 className="text-4xl md:text-5xl font-black mb-4 tracking-tighter flex items-center justify-center md:justify-start gap-4">
               {lang === 'dr' ? 'ترازنامه مالی' : 'Financial Ledger'}
-              <button 
-                onClick={fetchData} 
+              <button
+                onClick={fetchData}
                 className="p-2.5 hover:bg-white/10 rounded-2xl transition-all active:scale-90"
                 title={t.update}
               >
@@ -107,14 +109,14 @@ export default function Ledger({
               {lang === 'dr' ? 'مدیریت دقیق جریان نقدینگی و مصارف عملیاتی فابریکه شین غزی بابا.' : 'Precise management of cash flow and operational expenses for Sheen Ghazy Baba Factory.'}
             </p>
           </div>
-          
+
           <div className="flex flex-col gap-4">
             <div className="bg-white/5 backdrop-blur-xl rounded-[24px] p-6 border border-white/10 text-center min-w-[240px] shadow-inner">
               <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-2">{lang === 'dr' ? 'مجموع مصارف امروز' : 'Today\'s Total Expenses'}</p>
               <p className="text-4xl font-black text-red-400">{todayExpenses.toLocaleString()} <span className="text-sm font-normal text-slate-500">AFN</span></p>
             </div>
             <div className="flex gap-4">
-               <button 
+               <button
                  onClick={handleExport}
                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-600/20"
                >
@@ -134,11 +136,12 @@ export default function Ledger({
           </div>
           <h3 className="font-black text-xl text-gray-800 dark:text-white">{t.addExpense}</h3>
         </div>
-        
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          <div className="space-y-2">
+
+        <form onSubmit={handleAdd} onKeyDown={handleKeyboardNavigation} className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div className="space-y-2">
             <label className="text-xs font-bold text-gray-400 uppercase tracking-wider px-1">بخش مربوطه</label>
-            <select 
+            <select
               value={newExpense.department}
               onChange={e => setNewExpense({...newExpense, department: e.target.value})}
               className="w-full border-2 border-gray-100 dark:border-slate-800 dark:bg-slate-800 dark:text-white rounded-2xl px-4 py-3.5 outline-none focus:ring-2 focus:ring-blue-500 transition-all font-bold text-sm"
@@ -151,39 +154,40 @@ export default function Ledger({
           </div>
           <div className="md:col-span-2 space-y-2">
             <label className="text-xs font-bold text-gray-400 uppercase tracking-wider px-1">{t.description}</label>
-            <input 
-              type="text" 
-              placeholder="مثلاً: خرید روغن برای ماشین شماره ۲" 
+            <input
+              type="text"
+              placeholder="مثلاً: خرید روغن برای ماشین شماره ۲"
               value={newExpense.description}
               onChange={e => setNewExpense({...newExpense, description: e.target.value})}
-              className="w-full border-2 border-gray-100 dark:border-slate-800 dark:bg-slate-800 dark:text-white rounded-2xl px-4 py-3.5 outline-none focus:ring-2 focus:ring-blue-500 transition-all font-medium" 
+              className="w-full border-2 border-gray-100 dark:border-slate-800 dark:bg-slate-800 dark:text-white rounded-2xl px-4 py-3.5 outline-none focus:ring-2 focus:ring-blue-500 transition-all font-medium"
             />
           </div>
           <div className="space-y-2">
             <label className="text-xs font-bold text-gray-400 uppercase tracking-wider px-1">{t.amount}</label>
             <div className="relative">
-              <input 
-                type="text" 
+              <input
+                type="text"
                 inputMode="decimal"
-                placeholder="0.00" 
+                placeholder="0.00"
                 value={newExpense.amount}
                 onChange={e => setNewExpense({...newExpense, amount: toEnglishDigits(e.target.value)})}
-                className="w-full border-2 border-gray-100 dark:border-slate-800 dark:bg-slate-800 dark:text-white rounded-2xl px-4 py-3.5 outline-none focus:ring-2 focus:ring-blue-500 transition-all font-mono font-bold text-lg" 
+                className="w-full border-2 border-gray-100 dark:border-slate-800 dark:bg-slate-800 dark:text-white rounded-2xl px-4 py-3.5 outline-none focus:ring-2 focus:ring-blue-500 transition-all font-mono font-bold text-lg"
               />
               <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-xs">AFN</span>
             </div>
           </div>
         </div>
         <div className="mt-6 flex justify-end">
-          <button 
-            onClick={handleAdd}
-            disabled={isSaving || !newExpense.amount || !newExpense.description}
-            className={`bg-slate-900 dark:bg-blue-600 text-white font-black rounded-2xl px-12 py-4 transition-all flex items-center justify-center gap-3 shadow-xl ${isSaving ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105 active:scale-95'}`}
-          >
-            {isSaving ? <RefreshCw className="animate-spin" size={20} /> : <Plus size={20} />}
-            {t.save}
-          </button>
-        </div>
+            <button
+              type="submit"
+              disabled={isSaving || !newExpense.amount || !newExpense.description}
+              className={`bg-slate-900 dark:bg-blue-600 text-white font-black rounded-2xl px-12 py-4 transition-all flex items-center justify-center gap-3 shadow-xl ${isSaving ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105 active:scale-95'}`}
+            >
+              {isSaving ? <RefreshCw className="animate-spin" size={20} /> : <Plus size={20} />}
+              {t.save}
+            </button>
+          </div>
+        </form>
       </div>
 
       {/* Ledger Table & Filters */}

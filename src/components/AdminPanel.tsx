@@ -19,6 +19,8 @@ import Employees from './admin/Employees';
 import Production from './admin/Production';
 import Settings from './admin/Settings';
 import Header from './admin/Header';
+import { API_URL } from '../config';
+import { handleKeyboardNavigation, toEnglishDigits as magicDtoE } from '../utils/magicUx';
 
 // --- Types & Translations ---
 type Language = 'dr' | 'ps' | 'en';
@@ -532,8 +534,6 @@ export default function AdminPanel() {
 
   const [dbStatus, setDbStatus] = useState<{status: string, database: string} | null>(null);
 
-  const API_URL = import.meta.env.VITE_API_URL || (typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.hostname}:8000` : 'http://127.0.0.1:8000');
-
   const checkDbStatus = async () => {
     if (!token) return;
     try {
@@ -905,7 +905,10 @@ export default function AdminPanel() {
     if (hidden) return null;
     return (
       <button
-        onClick={() => setActiveTab(id)}
+        onClick={() => {
+          setActiveTab(id);
+          setIsSidebarOpen(false); // Hide sidebar on mobile when an item is clicked
+        }}
         className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
           activeTab === id ? 'bg-blue-600 text-white' : 'hover:bg-gray-100 dark:hover:bg-slate-800 text-gray-600 dark:text-gray-400'
         }`}
@@ -930,7 +933,7 @@ export default function AdminPanel() {
 
         <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
           <div className="bg-white dark:bg-slate-900 py-8 px-4 shadow-2xl shadow-blue-900/5 sm:rounded-3xl sm:px-10 border border-gray-100 dark:border-slate-800">
-            <form className="space-y-6" onSubmit={handleLogin}>
+            <form className="space-y-6" onSubmit={handleLogin} onKeyDown={handleKeyboardNavigation}>
               <div>
                 <label className="block text-sm font-bold text-gray-700 dark:text-gray-300">
                   {lang === 'dr' || lang === 'ps' ? 'نام کاربری' : 'Username'}
@@ -955,7 +958,7 @@ export default function AdminPanel() {
                     type="password"
                     required
                     value={loginData.password}
-                    onChange={(e) => setLoginData({...loginData, password: e.target.value})}
+                    onChange={(e) => setLoginData({...loginData, password: magicDtoE(e.target.value)})}
                     className="appearance-none block w-full px-4 py-3 border border-gray-300 dark:border-slate-700 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white dark:bg-slate-800 text-gray-900 dark:text-white font-sans text-start"
                   />
                 </div>
@@ -1152,7 +1155,7 @@ export default function AdminPanel() {
                 <X size={24} />
               </button>
             </div>
-            <form onSubmit={handleAddEmployee} className="p-6 space-y-4">
+            <form onSubmit={handleAddEmployee} className="p-6 space-y-4" onKeyDown={handleKeyboardNavigation}>
               <div>
                 <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">{t.colName}</label>
                 <input required type="text" value={newEmployee.full_name} onChange={e => setNewEmployee({...newEmployee, full_name: e.target.value})} className="w-full border dark:border-slate-700 dark:bg-slate-800 dark:text-white rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 outline-none" />
@@ -1199,7 +1202,7 @@ export default function AdminPanel() {
                 <X size={24} />
               </button>
             </div>
-            <form onSubmit={handleAddProduction} className="p-6 space-y-4">
+            <form onSubmit={handleAddProduction} className="p-6 space-y-4" onKeyDown={handleKeyboardNavigation}>
               <div>
                 <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">محصول (Product)</label>
                 <select required value={newProduction.ProductId} onChange={e => setNewProduction({...newProduction, ProductId: e.target.value})} className="w-full border dark:border-slate-700 dark:bg-slate-800 dark:text-white rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 outline-none">
@@ -1253,7 +1256,7 @@ export default function AdminPanel() {
               </button>
             </div>
 
-            <form onSubmit={handleCreateDirectSale} className="p-8 space-y-6">
+            <form onSubmit={handleCreateDirectSale} className="p-8 space-y-6" onKeyDown={handleKeyboardNavigation}>
               <div className="bg-blue-50/50 dark:bg-blue-900/10 p-6 rounded-2xl border border-blue-100 dark:border-blue-900/30 grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-widest px-1">انتخاب مشتری (CRM)</label>

@@ -1,8 +1,5 @@
 import { useState, useEffect } from 'react';
-
-// Use relative path by default for AI Studio preview (which uses server.ts on port 3000)
-// If running locally with FastAPI, set VITE_API_URL=http://127.0.0.1:8000 in .env
-const API_URL = import.meta.env.VITE_API_URL || '';
+import { API_URL } from '../config';
 
 export function useApi<T>(endpoint: string) {
   const [data, setData] = useState<T | null>(null);

@@ -5,6 +5,7 @@ import {
   MoreVertical, Shield, Briefcase, Calendar, Download,
   Fingerprint, RotateCcw, Clock
 } from 'lucide-react';
+import { API_URL } from '../../config';
 
 interface EmployeesProps {
   employees: any[];
@@ -49,21 +50,14 @@ export default function Employees({
   );
 
   const handleExport = () => {
-    const apiUrl = typeof process !== 'undefined' && process.env && process.env.NEXT_PUBLIC_API_URL
-                   ? process.env.NEXT_PUBLIC_API_URL
-                   : (import.meta.env ? import.meta.env.VITE_API_URL : '');
-    window.open((apiUrl || '') + '/api/attendance/report?month=current', '_blank');
+    window.open(`${API_URL}/api/attendance/report?month=current`, '_blank');
   };
 
   const handleZkSync = async () => {
     setIsSyncing(true);
     setToast(null);
     try {
-      const apiUrl = typeof process !== 'undefined' && process.env && process.env.NEXT_PUBLIC_API_URL
-                   ? process.env.NEXT_PUBLIC_API_URL
-                   : (import.meta.env ? import.meta.env.VITE_API_URL : '');
-
-      const res = await fetch((apiUrl || '') + '/api/attendance/sync', {
+      const res = await fetch(`${API_URL}/api/attendance/sync`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('admin_token') || ''}`,
