@@ -120,7 +120,7 @@ export default function ChatWidget() {
     setIsLoading(true);
 
     try {
-      const API_URL = import.meta.env.VITE_API_URL || '';
+      const API_URL = import.meta.env.VITE_API_URL || (typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.hostname}:8000` : 'http://127.0.0.1:8000');
 
       console.log('Sending chat request to:', `${API_URL}/api/chat`);
       console.log('Payload:', { message: userMessage, history: messages });
