@@ -272,7 +272,7 @@ export default function AdminPanel() {
   const [newProduction, setNewProduction] = useState({ ProductId: '', quantity_produced: '', raw_material_used: '', department: 'PIPE' });
 
   const [isAddSaleModalOpen, setIsAddSaleModalOpen] = useState(false);
-  const [newSale, setNewSale] = useState({ CustomerId: '', items: [{ ProductId: '', quantity: 1, unit_price: 0 }] });
+  const [newSale, setNewSale] = useState<any>({ CustomerId: '', customer_name: '', items: [{ ProductId: '', quantity: 1, unit_price: 0 }] });
 
   const [toast, setToast] = useState<{message: string, type: 'success' | 'error'} | null>(null);
 
@@ -281,22 +281,26 @@ export default function AdminPanel() {
     setTimeout(() => setToast(null), 5000);
   };
 
+
+  const [printOrderData, setPrintOrderData] = useState<any | null>(null);
+
   const handleCreateDirectSale = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isSaving) return;
-    if (!newSale.CustomerId || newSale.items.some(i => !i.ProductId || i.quantity <= 0)) {
-      showToast(lang === 'dr' ? 'لطفاً تمام فیلدها را به درستی پر کنید' : 'Please fill all fields correctly', 'error');
+    if ((!newSale.CustomerId && !newSale.customer_name) || newSale.items.some(i => !i.ProductId || i.quantity <= 0)) {
+      showToast(lang === 'dr' ? 'لطفاً نام مشتری یا یک مشتری را انتخاب کنید' : 'Please select or enter customer', 'error');
       return;
     }
 
     setIsSaving(true);
     try {
       const payload = {
-        CustomerId: newSale.CustomerId,
+        CustomerId: newSale.CustomerId || null,
+        customer_name: newSale.customer_name || null,
         items: newSale.items.map(item => ({
           ProductId: item.ProductId,
-          quantity: parseInt(toEnglishDigits(item.quantity), 10) || 0,
-          unit_price: parseFloat(toEnglishDigits(item.unit_price)) || 0
+          quantity: parseInt(toEnglishDigits(item.quantity).toString(), 10) || 0,
+          unit_price: parseFloat(toEnglishDigits(item.unit_price).toString()) || 0
         }))
       };
 
@@ -310,10 +314,17 @@ export default function AdminPanel() {
       });
 
       if (res.ok) {
+        const data = await res.json();
         fetchData(); // Refresh orders, ledger, and products
         setIsAddSaleModalOpen(false);
-        setNewSale({ CustomerId: '', items: [{ ProductId: '', quantity: 1, unit_price: 0 }] });
+        setNewSale({ CustomerId: '', customer_name: '', items: [{ ProductId: '', quantity: 1, unit_price: 0 }] });
         showToast(lang === 'dr' ? 'فروش با موفقیت ثبت شد' : 'Sale saved successfully', 'success');
+
+        // Trigger auto-print
+        if (data.order) {
+          setPrintOrderData(data.order);
+          setTimeout(() => window.print(), 500);
+        }
       } else {
         const data = await res.json();
         showToast(data.error || 'Failed to save sale', 'error');
@@ -995,8 +1006,16 @@ export default function AdminPanel() {
         </div>
       )}
 
+      {/* Mobile Sidebar Overlay */}
+      {isSidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-[15] lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
       {/* Sidebar */}
-      <aside className={`bg-white dark:bg-slate-900 border-e dark:border-slate-800 w-64 p-4 flex flex-col gap-6 fixed h-full z-20 transition-transform ${isSidebarOpen ? 'translate-x-0' : (isRTL ? 'translate-x-full' : '-translate-x-full')} lg:relative lg:translate-x-0`}>
+      <aside className={`print:hidden bg-white dark:bg-slate-900 border-e dark:border-slate-800 w-64 p-4 flex flex-col gap-6 fixed top-0 h-full z-20 transition-transform ${isSidebarOpen ? 'translate-x-0' : (isRTL ? 'translate-x-full' : '-translate-x-full')} ${isRTL ? 'right-0 border-l' : 'left-0 border-r'} lg:relative lg:translate-x-0`}>
         <div className="flex items-center gap-3 px-2">
           <div className="w-10 h-10 bg-blue-700 rounded-xl flex items-center justify-center text-white font-bold text-xl">SG</div>
           <h1 className="font-bold text-lg text-gray-800 dark:text-white tracking-tight">Sheen Ghazy</h1>
@@ -1032,7 +1051,7 @@ export default function AdminPanel() {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col min-w-0">
+      <main className="print:hidden flex-1 flex flex-col min-w-0">
         <Header
           isSidebarOpen={isSidebarOpen}
           setSidebarOpen={setSidebarOpen}
@@ -1238,9 +1257,10 @@ export default function AdminPanel() {
         </div>
       )}
       {/* Add Direct Sale Modal */}
-      {isAddSaleModalOpen && (
+      {isAddSaleModalOpen && !printOrderData && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white dark:bg-slate-900 rounded-[32px] shadow-2xl w-full max-w-3xl overflow-hidden border dark:border-slate-800 animate-in zoom-in duration-300">
+
             <div className="flex justify-between items-center p-8 border-b dark:border-slate-800 bg-gray-50/50 dark:bg-slate-800/50">
               <div className="flex items-center gap-4">
                 <div className="w-14 h-14 bg-blue-600 rounded-2xl flex items-center justify-center text-white shadow-xl shadow-blue-600/30">
@@ -1259,18 +1279,26 @@ export default function AdminPanel() {
             <form onSubmit={handleCreateDirectSale} className="p-8 space-y-6" onKeyDown={handleKeyboardNavigation}>
               <div className="bg-blue-50/50 dark:bg-blue-900/10 p-6 rounded-2xl border border-blue-100 dark:border-blue-900/30 grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-widest px-1">انتخاب مشتری (CRM)</label>
-                  <select
-                    required
-                    value={newSale.CustomerId}
-                    onChange={e => setNewSale({...newSale, CustomerId: e.target.value})}
-                    className="w-full border-2 border-white dark:border-slate-800 dark:bg-slate-800 dark:text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500 transition-all font-bold text-sm shadow-sm"
-                  >
-                    <option value="">{lang === 'dr' ? 'انتخاب مشتری...' : 'Select Customer...'}</option>
-                    {customers.map(c => (
-                      <option key={c.id} value={c.id}>{c.full_name} — {c.whatsapp_number}</option>
-                    ))}
-                  </select>
+                  <label className="text-[10px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-widest px-1">انتخاب مشتری یا نام مشتری جدید</label>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <select
+                      value={newSale.CustomerId}
+                      onChange={e => setNewSale({...newSale, CustomerId: e.target.value, customer_name: ''})}
+                      className="w-full sm:w-1/2 border-2 border-white dark:border-slate-800 dark:bg-slate-800 dark:text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500 transition-all font-bold text-sm shadow-sm"
+                    >
+                      <option value="">{lang === 'dr' ? 'انتخاب مشتری...' : 'Select Customer...'}</option>
+                      {customers.map(c => (
+                        <option key={c.id} value={c.id}>{c.full_name} — {c.whatsapp_number}</option>
+                      ))}
+                    </select>
+                    <input
+                      type="text"
+                      placeholder={lang === 'dr' ? 'یا نام مشتری رهگذر...' : 'Or walk-in name...'}
+                      value={newSale.customer_name || ''}
+                      onChange={e => setNewSale({...newSale, customer_name: e.target.value, CustomerId: ''})}
+                      className="w-full sm:w-1/2 border-2 border-white dark:border-slate-800 dark:bg-slate-800 dark:text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500 transition-all font-bold text-sm shadow-sm placeholder-gray-400"
+                    />
+                  </div>
                 </div>
                 <div className="flex items-center gap-3">
                   <div className="flex-1">
@@ -1408,6 +1436,84 @@ export default function AdminPanel() {
                 </div>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {printOrderData && (
+        <div className="fixed inset-0 z-[9999] bg-white flex items-center justify-center p-4">
+          <div className="bg-white p-8 rounded-xl shadow-2xl max-w-2xl w-full border border-gray-200">
+            <div className="print-area">
+              <div className="text-center mb-8 border-b-2 border-gray-800 pb-6">
+                <h1 className="text-4xl font-black text-gray-900 mb-2">Sheen Ghazy Baba</h1>
+                <h2 className="text-xl font-bold text-gray-600">شرکت تولیدی شین غزی بابا</h2>
+                <p className="text-gray-500 mt-2 text-sm">تولید کننده پایپ‌های استاندارد PVC و PPRC در افغانستان</p>
+              </div>
+              <div className="flex justify-between items-start mb-8 text-sm font-bold text-gray-700">
+                <div className="space-y-2">
+                  <p className="flex items-center gap-2"><span className="text-gray-400">مشتری (Customer):</span> {printOrderData.customer_name}</p>
+                  <p className="flex items-center gap-2"><span className="text-gray-400">تاریخ (Date):</span> {formatJalali(printOrderData.date, lang, true)}</p>
+                </div>
+                <div className="space-y-2 text-end">
+                  <p className="flex items-center justify-end gap-2"><span className="text-gray-400">شماره فاکتور (Invoice No):</span> #{printOrderData.id}</p>
+                </div>
+              </div>
+              <table className="w-full text-sm text-center mb-8">
+                <thead className="bg-gray-100 border-b-2 border-gray-800 text-gray-800 font-bold">
+                  <tr>
+                    <th className="py-3 px-2 text-center">ردیف</th>
+                    <th className="py-3 px-2 text-start">جنس / محصول</th>
+                    <th className="py-3 px-2">سایز</th>
+                    <th className="py-3 px-2">مقدار</th>
+                    <th className="py-3 px-2 text-end">قیمت فی</th>
+                    <th className="py-3 px-2 text-end">مجموع</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200 text-gray-700">
+                  {printOrderData.items.map((item: any, idx: number) => (
+                    <tr key={idx}>
+                      <td className="py-3 px-2 text-center">{idx + 1}</td>
+                      <td className="py-3 px-2 text-start font-bold">{item.product_name}</td>
+                      <td className="py-3 px-2" dir="ltr">{item.size}</td>
+                      <td className="py-3 px-2 font-bold">{item.quantity}</td>
+                      <td className="py-3 px-2 text-end" dir="ltr">{item.unit_price} AFN</td>
+                      <td className="py-3 px-2 text-end font-bold" dir="ltr">{item.total} AFN</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div className="border-t-2 border-gray-800 pt-4 flex justify-between items-center mb-12">
+                <p className="text-gray-500 italic text-xs">اجناس فروخته شده پس گرفته نمیشود.</p>
+                <div className="text-start">
+                  <p className="text-sm font-bold text-gray-500 uppercase">مجموع کل (Total Amount)</p>
+                  <p className="text-3xl font-black text-gray-900" dir="ltr">{printOrderData.total_amount} <span className="text-lg text-gray-600">AFN</span></p>
+                </div>
+              </div>
+              <div className="flex justify-between items-center mt-12 pt-8 border-t border-gray-200">
+                <div className="text-center w-40">
+                  <div className="border-b border-gray-400 mb-2 h-8"></div>
+                  <p className="text-xs font-bold text-gray-500">امضاء فروشنده</p>
+                </div>
+                <div className="text-center w-40">
+                  <div className="border-b border-gray-400 mb-2 h-8"></div>
+                  <p className="text-xs font-bold text-gray-500">امضاء مشتری</p>
+                </div>
+              </div>
+            </div>
+            {/* Action buttons (hidden when printing) */}
+            <div className="mt-8 flex justify-end gap-4 print:hidden">
+              <button
+                onClick={() => setPrintOrderData(null)}
+                className="px-6 py-2 bg-gray-100 text-gray-700 rounded-lg font-bold hover:bg-gray-200"
+              >
+                بستن (Close)
+              </button>
+              <button
+                onClick={() => window.print()}
+                className="px-6 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 shadow-lg"
+              >
+                چاپ دوباره (Print)
+              </button>
+            </div>
           </div>
         </div>
       )}

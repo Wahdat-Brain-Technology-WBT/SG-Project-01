@@ -499,7 +499,7 @@ async def chat_endpoint(request: ChatRequest):
 
         try:
             chat = client.chats.create(
-                model="gemini-1.5-flash",
+                model="gemini-2.5-flash",
                 config=config,
                 history=gemini_history if gemini_history else None
             )
@@ -595,6 +595,103 @@ def update_product(id: int, product: ProductUpdate, db: Session = Depends(get_db
     db.commit()
     db.refresh(db_product)
     return db_product
+
+
+@app.delete("/api/products/{id}")
+def delete_product(id: int, db: Session = Depends(get_db)):
+    db_product = db.query(Product).filter(Product.id == id).first()
+    if not db_product:
+        raise HTTPException(status_code=404, detail="محصول یافت نشد")
+
+    # Handle foreign keys (Production and OrderItems)
+    db.query(Production).filter(Production.ProductId == id).delete(synchronize_session=False)
+    db.query(OrderItem).filter(OrderItem.ProductId == id).delete(synchronize_session=False)
+
+    db.delete(db_product)
+    db.commit()
+    return {"message": "محصول با موفقیت حذف شد"}
+
+
+class DirectSaleCreate(BaseModel):
+    CustomerId: Optional[int] = None
+    customer_name: Optional[str] = None
+    items: List[DirectSaleItem]
+
+
+@app.post("/api/orders/direct")
+def create_direct_sale(sale: DirectSaleCreate, db: Session = Depends(get_db)):
+    total_amount = 0
+    items_out = []
+
+    # 1. Handle Customer
+    customer = None
+    if sale.CustomerId:
+        customer = db.query(Customer).filter(Customer.id == sale.CustomerId).first()
+    if not customer and sale.customer_name:
+        customer = db.query(Customer).filter(Customer.whatsapp_number == sale.customer_name).first()
+        if not customer:
+            customer = Customer(full_name=sale.customer_name, whatsapp_number="مشتری مرکزی: " + sale.customer_name)
+            db.add(customer)
+            db.commit()
+            db.refresh(customer)
+
+    if not customer:
+        raise HTTPException(status_code=400, detail="مشتری مشخص نشده است")
+
+    # 2. Create Order
+    new_order = Order(CustomerId=customer.id, status='COMPLETED')
+    db.add(new_order)
+    db.commit()
+    db.refresh(new_order)
+
+    # 3. Handle Items
+    for item in sale.items:
+        product = db.query(Product).filter(Product.id == item.ProductId).first()
+        if not product or product.stock_quantity < item.quantity:
+            raise HTTPException(status_code=400, detail=f"موجودی ناکافی برای محصول ID: {item.ProductId}")
+
+        product.stock_quantity -= item.quantity
+        total_amount += item.unit_price * item.quantity
+
+        order_item = OrderItem(
+            OrderId=new_order.id,
+            ProductId=product.id,
+            quantity=item.quantity,
+            unit_price=item.unit_price
+        )
+        db.add(order_item)
+
+        items_out.append({
+            "product_name": product.name,
+            "size": product.size,
+            "quantity": item.quantity,
+            "unit_price": item.unit_price,
+            "total": item.unit_price * item.quantity
+        })
+
+    new_order.total_amount = total_amount
+
+    # 4. Handle Ledger
+    db_ledger = Ledger(
+        type="INCOME",
+        amount=total_amount,
+        description=f"فروش مستقیم (فاکتور #{new_order.id}) - مشتری: {customer.full_name}",
+        department="GENERAL",
+        order_id=new_order.id
+    )
+    db.add(db_ledger)
+    db.commit()
+
+    return {
+        "success": True,
+        "order": {
+            "id": new_order.id,
+            "date": new_order.createdAt.isoformat(),
+            "customer_name": customer.full_name,
+            "total_amount": total_amount,
+            "items": items_out
+        }
+    }
 
 
 @app.get("/api/orders")

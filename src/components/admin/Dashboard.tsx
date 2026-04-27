@@ -120,8 +120,8 @@ export default function Dashboard({ theme, lang, t }: DashboardProps) {
       }
     });
 
-    // Reverse data so Saturday appears on the right for RTL layout
-    return data.reverse();
+    // Do not reverse, keep order from Saturday to Friday
+    return data;
   }, [ledger, lang]);
 
   // Filter exact transactions for the selected day (RULE 4)
@@ -258,14 +258,14 @@ export default function Dashboard({ theme, lang, t }: DashboardProps) {
             {/* Scrollable Container for Chart */}
             <div
               className="overflow-x-auto custom-scrollbar pb-4"
-              dir="rtl"
+              dir="ltr"
               tabIndex={0}
               onWheel={(e) => {
                 const container = e.currentTarget;
                 container.scrollLeft += e.deltaY;
               }}
             >
-              <div className="h-[400px] min-w-[800px]" dir="ltr">
+              <div className="h-[400px] min-w-[800px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }} barCategoryGap="20%">
                     <defs>
@@ -285,7 +285,6 @@ export default function Dashboard({ theme, lang, t }: DashboardProps) {
                       tickLine={false}
                       tick={{ fill: theme === 'dark' ? '#94a3b8' : '#64748b' }}
                       dy={10}
-                      reversed={true}
                     />
                     <YAxis
                       axisLine={false}
