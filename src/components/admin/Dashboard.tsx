@@ -5,7 +5,8 @@ import {
 } from 'recharts';
 import {
   TrendingUp, TrendingDown, DollarSign, Activity, AlertCircle,
-  Server, Database, HardDrive, Cpu, Zap, Package, X, ArrowUpCircle, ArrowDownCircle, Factory
+  Server, Database, HardDrive, Cpu, Zap, Package, X, ArrowUpCircle, ArrowDownCircle, Factory,
+  Download, Calendar, ChevronDown, CalendarDays, CalendarCheck, CalendarRange
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import jalaali from 'jalaali-js';
@@ -33,6 +34,7 @@ export default function Dashboard({ theme, lang, t }: DashboardProps) {
   // 2. State for Live Exchange Rate & Interactive Chart
   const [exchangeRate, setExchangeRate] = useState<number>(71.5); // Default fallback
   const [selectedDay, setSelectedDay] = useState<any | null>(null);
+  const [activeFinanceCard, setActiveFinanceCard] = useState<'INCOME' | 'EXPENSE' | 'PROFIT' | null>(null);
   const detailsRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to details when a day is selected
@@ -59,6 +61,64 @@ export default function Dashboard({ theme, lang, t }: DashboardProps) {
   const totalIncome = safeLedger.filter(l => l.type === 'INCOME').reduce((sum, l) => sum + (l.amount || 0), 0);
   const totalExpenses = safeLedger.filter(l => l.type === 'EXPENSE').reduce((sum, l) => sum + (l.amount || 0), 0);
   const netProfit = totalIncome - totalExpenses;
+
+  const financialPeriods = useMemo(() => {
+    const today = new Date();
+    const todayStr = today.toLocaleDateString('en-CA');
+
+    // Day of week starts from saturday (in afghanistan) or just 7 days ago
+    const startOfWeek = new Date(today);
+    const dayOfWeek = today.getDay(); // 0 = Sun, 1 = Mon, ..., 6 = Sat
+    const daysSinceSaturday = dayOfWeek === 6 ? 0 : dayOfWeek + 1;
+    startOfWeek.setDate(today.getDate() - daysSinceSaturday);
+    const startOfWeekStr = startOfWeek.toLocaleDateString('en-CA');
+
+    const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1).toLocaleDateString('en-CA');
+    const startOfYear = new Date(today.getFullYear(), 0, 1).toLocaleDateString('en-CA');
+
+    const stats = {
+      daily: { INCOME: 0, EXPENSE: 0, PROFIT: 0 },
+      weekly: { INCOME: 0, EXPENSE: 0, PROFIT: 0 },
+      monthly: { INCOME: 0, EXPENSE: 0, PROFIT: 0 },
+      yearly: { INCOME: 0, EXPENSE: 0, PROFIT: 0 },
+    };
+
+    safeLedger.forEach(l => {
+      const lDate = new Date(l.date || l.createdAt).toLocaleDateString('en-CA');
+      const amt = l.amount || 0;
+
+      // Daily
+      if (lDate === todayStr) {
+        if (l.type === 'INCOME') stats.daily.INCOME += amt;
+        if (l.type === 'EXPENSE') stats.daily.EXPENSE += amt;
+      }
+
+      // Weekly
+      if (lDate >= startOfWeekStr && lDate <= todayStr) {
+        if (l.type === 'INCOME') stats.weekly.INCOME += amt;
+        if (l.type === 'EXPENSE') stats.weekly.EXPENSE += amt;
+      }
+
+      // Monthly
+      if (lDate >= startOfMonth && lDate <= todayStr) {
+        if (l.type === 'INCOME') stats.monthly.INCOME += amt;
+        if (l.type === 'EXPENSE') stats.monthly.EXPENSE += amt;
+      }
+
+      // Yearly
+      if (lDate >= startOfYear && lDate <= todayStr) {
+        if (l.type === 'INCOME') stats.yearly.INCOME += amt;
+        if (l.type === 'EXPENSE') stats.yearly.EXPENSE += amt;
+      }
+    });
+
+    stats.daily.PROFIT = stats.daily.INCOME - stats.daily.EXPENSE;
+    stats.weekly.PROFIT = stats.weekly.INCOME - stats.weekly.EXPENSE;
+    stats.monthly.PROFIT = stats.monthly.INCOME - stats.monthly.EXPENSE;
+    stats.yearly.PROFIT = stats.yearly.INCOME - stats.yearly.EXPENSE;
+
+    return stats;
+  }, [safeLedger]);
 
   // Chart Data Aggregation (Current Week starting from Saturday)
   const chartData = useMemo(() => {
@@ -180,6 +240,60 @@ export default function Dashboard({ theme, lang, t }: DashboardProps) {
     return null;
   };
 
+  const downloadFinancialReport = (type: 'INCOME' | 'EXPENSE' | 'PROFIT', period: 'daily' | 'weekly' | 'monthly' | 'yearly') => {
+    let rows: any[] = [];
+
+    // Header
+    rows.push(['Date', 'Description', 'Amount (AFN)', 'Type']);
+
+    // We would filter ledger based on period here. Since the user wants to download report, let's keep it simple and dump period totals or exact txns.
+    // For a highly advanced feel, let's dump the exact transactions for that period.
+    const today = new Date();
+    const todayStr = today.toLocaleDateString('en-CA');
+    const startOfWeek = new Date(today);
+    const dayOfWeek = today.getDay();
+    const daysSinceSaturday = dayOfWeek === 6 ? 0 : dayOfWeek + 1;
+    startOfWeek.setDate(today.getDate() - daysSinceSaturday);
+    const startOfWeekStr = startOfWeek.toLocaleDateString('en-CA');
+    const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1).toLocaleDateString('en-CA');
+    const startOfYear = new Date(today.getFullYear(), 0, 1).toLocaleDateString('en-CA');
+
+    let startDate = todayStr;
+    if (period === 'weekly') startDate = startOfWeekStr;
+    if (period === 'monthly') startDate = startOfMonth;
+    if (period === 'yearly') startDate = startOfYear;
+
+    const filteredLedger = safeLedger.filter(l => {
+      const lDate = new Date(l.date || l.createdAt).toLocaleDateString('en-CA');
+      const inRange = lDate >= startDate && lDate <= todayStr;
+
+      if (!inRange) return false;
+      if (type === 'INCOME') return l.type === 'INCOME';
+      if (type === 'EXPENSE') return l.type === 'EXPENSE';
+      return true; // Profit includes both
+    });
+
+    filteredLedger.forEach(l => {
+      rows.push([
+        new Date(l.date || l.createdAt).toLocaleDateString('fa-IR'),
+        l.description || '-',
+        l.amount,
+        l.type
+      ]);
+    });
+
+    let csvContent = "data:text/csv;charset=utf-8,\uFEFF"
+      + rows.map(e => e.join(",")).join("\n");
+
+    var encodedUri = encodeURI(csvContent);
+    var link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `SheenGhazy_${type}_${period}_report.csv`);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  };
+
   return (
     <div className="space-y-8 animate-in fade-in duration-700 pb-10 relative">
       {/* Header & Live Status */}
@@ -207,10 +321,16 @@ export default function Dashboard({ theme, lang, t }: DashboardProps) {
       {/* 1. Live Multi-Currency Financial Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {/* Income Card */}
-        <div className="bg-gradient-to-br from-emerald-500 to-emerald-700 rounded-3xl p-6 text-white shadow-xl shadow-emerald-600/20 relative overflow-hidden">
-          <div className="absolute top-0 right-0 p-4 opacity-20"><TrendingUp size={80} /></div>
+        <div
+          onClick={() => setActiveFinanceCard('INCOME')}
+          className="bg-gradient-to-br from-emerald-500 to-emerald-700 rounded-3xl p-6 text-white shadow-xl shadow-emerald-600/20 relative overflow-hidden cursor-pointer hover:shadow-emerald-600/40 transition-all hover:-translate-y-1 group"
+        >
+          <div className="absolute top-0 right-0 p-4 opacity-20 group-hover:scale-110 transition-transform"><TrendingUp size={80} /></div>
           <div className="relative z-10">
-            <p className="text-emerald-100 font-bold mb-1">{lang === 'en' ? 'Total Income' : 'مجموع عایدات'}</p>
+            <p className="text-emerald-100 font-bold mb-1 flex justify-between items-center">
+              {lang === 'en' ? 'Total Income' : 'مجموع عایدات'}
+              <ChevronDown size={18} className="opacity-0 group-hover:opacity-100 transition-opacity" />
+            </p>
             <h3 className="text-4xl font-black mb-1" dir="ltr">{formatAFN(totalIncome)}</h3>
             <p className="text-emerald-200 text-sm font-medium mb-4" dir="ltr">≈ {formatUSD(totalIncome)}</p>
             <div className="inline-flex items-center gap-1 bg-white/20 px-3 py-1 rounded-full text-xs font-bold backdrop-blur-sm">
@@ -220,10 +340,16 @@ export default function Dashboard({ theme, lang, t }: DashboardProps) {
         </div>
 
         {/* Expenses Card */}
-        <div className="bg-gradient-to-br from-rose-500 to-rose-700 rounded-3xl p-6 text-white shadow-xl shadow-rose-600/20 relative overflow-hidden">
-          <div className="absolute top-0 right-0 p-4 opacity-20"><TrendingDown size={80} /></div>
+        <div
+          onClick={() => setActiveFinanceCard('EXPENSE')}
+          className="bg-gradient-to-br from-rose-500 to-rose-700 rounded-3xl p-6 text-white shadow-xl shadow-rose-600/20 relative overflow-hidden cursor-pointer hover:shadow-rose-600/40 transition-all hover:-translate-y-1 group"
+        >
+          <div className="absolute top-0 right-0 p-4 opacity-20 group-hover:scale-110 transition-transform"><TrendingDown size={80} /></div>
           <div className="relative z-10">
-            <p className="text-rose-100 font-bold mb-1">{lang === 'en' ? 'Total Expenses' : 'مجموع مصارف'}</p>
+            <p className="text-rose-100 font-bold mb-1 flex justify-between items-center">
+              {lang === 'en' ? 'Total Expenses' : 'مجموع مصارف'}
+              <ChevronDown size={18} className="opacity-0 group-hover:opacity-100 transition-opacity" />
+            </p>
             <h3 className="text-4xl font-black mb-1" dir="ltr">{formatAFN(totalExpenses)}</h3>
             <p className="text-rose-200 text-sm font-medium mb-4" dir="ltr">≈ {formatUSD(totalExpenses)}</p>
             <div className="inline-flex items-center gap-1 bg-white/20 px-3 py-1 rounded-full text-xs font-bold backdrop-blur-sm">
@@ -233,18 +359,154 @@ export default function Dashboard({ theme, lang, t }: DashboardProps) {
         </div>
 
         {/* Net Profit Card */}
-        <div className="bg-gradient-to-br from-blue-600 to-indigo-800 rounded-3xl p-6 text-white shadow-xl shadow-blue-600/20 relative overflow-hidden">
-          <div className="absolute top-0 right-0 p-4 opacity-20"><DollarSign size={80} /></div>
+        <div
+          onClick={() => setActiveFinanceCard('PROFIT')}
+          className="bg-gradient-to-br from-blue-600 to-indigo-800 rounded-3xl p-6 text-white shadow-xl shadow-blue-600/20 relative overflow-hidden cursor-pointer hover:shadow-blue-600/40 transition-all hover:-translate-y-1 group"
+        >
+          <div className="absolute top-0 right-0 p-4 opacity-20 group-hover:scale-110 transition-transform"><DollarSign size={80} /></div>
           <div className="relative z-10">
-            <p className="text-blue-100 font-bold mb-1">{lang === 'en' ? 'Net Profit' : 'فایده خالص'}</p>
+            <p className="text-blue-100 font-bold mb-1 flex justify-between items-center">
+              {lang === 'en' ? 'Net Profit' : 'فایده خالص'}
+              <ChevronDown size={18} className="opacity-0 group-hover:opacity-100 transition-opacity" />
+            </p>
             <h3 className="text-4xl font-black mb-1" dir="ltr">{formatAFN(netProfit)}</h3>
             <p className="text-blue-200 text-sm font-medium mb-4" dir="ltr">≈ {formatUSD(netProfit)}</p>
             <div className="inline-flex items-center gap-1 bg-white/20 px-3 py-1 rounded-full text-xs font-bold backdrop-blur-sm">
-              <Activity size={14} /> {lang === 'en' ? 'Healthy Margin' : 'فایده سالم'} {/* RULE 3 */}
+              <Activity size={14} /> {lang === 'en' ? 'Healthy Margin' : 'فایده سالم'}
             </div>
           </div>
         </div>
       </div>
+
+      {/* Advanced Finance Details Panel (Expands when a card is clicked) */}
+      <AnimatePresence>
+        {activeFinanceCard && (
+          <motion.div
+            initial={{ height: 0, opacity: 0, marginTop: 0 }}
+            animate={{ height: 'auto', opacity: 1, marginTop: 24 }}
+            exit={{ height: 0, opacity: 0, marginTop: 0 }}
+            className="overflow-hidden"
+          >
+            <div className={`rounded-3xl border shadow-xl p-8 transition-colors ${
+              activeFinanceCard === 'INCOME' ? 'bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-900/50' :
+              activeFinanceCard === 'EXPENSE' ? 'bg-rose-50 dark:bg-rose-950/20 border-rose-200 dark:border-rose-900/50' :
+              'bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-900/50'
+            }`}>
+              <div className="flex justify-between items-center mb-8">
+                <div>
+                  <h3 className={`text-2xl font-black flex items-center gap-2 ${
+                    activeFinanceCard === 'INCOME' ? 'text-emerald-800 dark:text-emerald-400' :
+                    activeFinanceCard === 'EXPENSE' ? 'text-rose-800 dark:text-rose-400' :
+                    'text-blue-800 dark:text-blue-400'
+                  }`}>
+                    {activeFinanceCard === 'INCOME' && <TrendingUp />}
+                    {activeFinanceCard === 'EXPENSE' && <TrendingDown />}
+                    {activeFinanceCard === 'PROFIT' && <DollarSign />}
+                    {lang === 'en' ? `Detailed ${activeFinanceCard} Analysis` : `گزارش تحلیلی پیشرفته: ${activeFinanceCard === 'INCOME' ? 'عایدات' : activeFinanceCard === 'EXPENSE' ? 'مصارف' : 'فایده خالص'}`}
+                  </h3>
+                  <p className="text-gray-500 dark:text-gray-400 mt-1">
+                    {lang === 'en' ? 'Review period-by-period breakdown and download reports to Excel.' : 'بررسی جزء به جزء دوره‌های زمانی و دریافت گزارش‌های پیشرفته اکسل.'}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setActiveFinanceCard(null)}
+                  className="bg-white/50 dark:bg-slate-800/50 hover:bg-white dark:hover:bg-slate-800 p-2 rounded-full transition-colors"
+                >
+                  <X size={24} className="text-gray-600 dark:text-gray-400" />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                {/* Daily */}
+                <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800 flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400 font-bold mb-4">
+                      <Calendar size={18} />
+                      {lang === 'en' ? 'Today' : 'گزارش روزانه (امروز)'}
+                    </div>
+                    <p className={`text-3xl font-black mb-1`} dir="ltr">
+                      {formatAFN(financialPeriods.daily[activeFinanceCard])}
+                    </p>
+                    <p className="text-gray-400 text-sm font-medium mb-6" dir="ltr">≈ {formatUSD(financialPeriods.daily[activeFinanceCard])}</p>
+                  </div>
+                  <button
+                    onClick={() => downloadFinancialReport(activeFinanceCard, 'daily')}
+                    className="w-full py-2.5 bg-gray-100 hover:bg-gray-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-gray-700 dark:text-gray-300 font-bold rounded-xl transition-colors flex items-center justify-center gap-2 text-sm"
+                  >
+                    <Download size={16} />
+                    {lang === 'en' ? 'Download Excel' : 'دانلود فایل اکسل'}
+                  </button>
+                </div>
+
+                {/* Weekly */}
+                <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800 flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400 font-bold mb-4">
+                      <CalendarDays size={18} />
+                      {lang === 'en' ? 'This Week' : 'گزارش هفته‌وار (هفته جاری)'}
+                    </div>
+                    <p className={`text-3xl font-black mb-1`} dir="ltr">
+                      {formatAFN(financialPeriods.weekly[activeFinanceCard])}
+                    </p>
+                    <p className="text-gray-400 text-sm font-medium mb-6" dir="ltr">≈ {formatUSD(financialPeriods.weekly[activeFinanceCard])}</p>
+                  </div>
+                  <button
+                    onClick={() => downloadFinancialReport(activeFinanceCard, 'weekly')}
+                    className="w-full py-2.5 bg-gray-100 hover:bg-gray-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-gray-700 dark:text-gray-300 font-bold rounded-xl transition-colors flex items-center justify-center gap-2 text-sm"
+                  >
+                    <Download size={16} />
+                    {lang === 'en' ? 'Download Excel' : 'دانلود فایل اکسل'}
+                  </button>
+                </div>
+
+                {/* Monthly */}
+                <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800 flex flex-col justify-between relative overflow-hidden">
+                  <div className="absolute top-0 right-0 w-16 h-16 bg-gradient-to-br from-blue-500/10 to-transparent rounded-bl-full"></div>
+                  <div className="relative z-10">
+                    <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400 font-bold mb-4">
+                      <CalendarCheck size={18} />
+                      {lang === 'en' ? 'This Month' : 'گزارش ماهانه (ماه جاری)'}
+                    </div>
+                    <p className={`text-3xl font-black mb-1`} dir="ltr">
+                      {formatAFN(financialPeriods.monthly[activeFinanceCard])}
+                    </p>
+                    <p className="text-gray-400 text-sm font-medium mb-6" dir="ltr">≈ {formatUSD(financialPeriods.monthly[activeFinanceCard])}</p>
+                  </div>
+                  <button
+                    onClick={() => downloadFinancialReport(activeFinanceCard, 'monthly')}
+                    className="w-full py-2.5 bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/20 dark:hover:bg-blue-900/40 text-blue-700 dark:text-blue-400 font-bold rounded-xl transition-colors flex items-center justify-center gap-2 text-sm relative z-10 border border-blue-100 dark:border-blue-800/30"
+                  >
+                    <Download size={16} />
+                    {lang === 'en' ? 'Download Excel' : 'دانلود فایل اکسل'}
+                  </button>
+                </div>
+
+                {/* Yearly */}
+                <div className="bg-slate-800 dark:bg-slate-950 p-6 rounded-2xl shadow-sm border border-slate-700 dark:border-slate-800 flex flex-col justify-between text-white relative overflow-hidden">
+                  <div className="absolute -bottom-4 -right-4 w-24 h-24 bg-white/5 rounded-full blur-2xl"></div>
+                  <div className="relative z-10">
+                    <div className="flex items-center gap-2 text-slate-400 font-bold mb-4">
+                      <CalendarRange size={18} />
+                      {lang === 'en' ? 'This Year' : 'گزارش سالانه (سال جاری)'}
+                    </div>
+                    <p className={`text-3xl font-black mb-1 text-white`} dir="ltr">
+                      {formatAFN(financialPeriods.yearly[activeFinanceCard])}
+                    </p>
+                    <p className="text-slate-400 text-sm font-medium mb-6" dir="ltr">≈ {formatUSD(financialPeriods.yearly[activeFinanceCard])}</p>
+                  </div>
+                  <button
+                    onClick={() => downloadFinancialReport(activeFinanceCard, 'yearly')}
+                    className="w-full py-2.5 bg-white/10 hover:bg-white/20 text-white font-bold rounded-xl transition-colors flex items-center justify-center gap-2 text-sm relative z-10 backdrop-blur-sm"
+                  >
+                    <Download size={16} />
+                    {lang === 'en' ? 'Download Excel' : 'دانلود فایل اکسل'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Left Column: Chart & Details */}
