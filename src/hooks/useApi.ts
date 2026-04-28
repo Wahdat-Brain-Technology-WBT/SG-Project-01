@@ -1,18 +1,18 @@
 import { useState, useEffect } from 'react';
 import { API_URL } from '../config';
 
-export function useApi<T>(endpoint: string) {
+export function useApi<T>(endpoint: string, options?: { pollInterval?: number }) {
   const [data, setData] = useState<T | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const mutate = async () => {
-    setIsLoading(true);
+    // Keep loading state true only on first load if we don't hold previous data, or generally avoiding flashing.
+    // If it's a background poll, we might not want to set isLoading(true) to avoid UI flashes.
+    if (!data) setIsLoading(true);
     try {
       const token = localStorage.getItem('admin_token');
       const fullUrl = `${API_URL}${endpoint}`;
-
-      console.log("Fetching from:", fullUrl);
 
       const res = await fetch(fullUrl, {
         headers: { 'Authorization': `Bearer ${token}` }
@@ -49,7 +49,13 @@ export function useApi<T>(endpoint: string) {
     }
   };
 
-  useEffect(() => { mutate(); }, [endpoint]);
+  useEffect(() => {
+    mutate();
+    if (options?.pollInterval) {
+      const interval = setInterval(mutate, options.pollInterval);
+      return () => clearInterval(interval);
+    }
+  }, [endpoint, options?.pollInterval]);
 
   return { data, isLoading, error, mutate };
 }

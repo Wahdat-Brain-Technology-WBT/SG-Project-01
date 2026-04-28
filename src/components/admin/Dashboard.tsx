@@ -25,11 +25,11 @@ interface DashboardProps {
 }
 
 export default function Dashboard({ theme, lang, t }: DashboardProps) {
-  // 1. Fetching Data using useApi
-  const { data: products } = useApi<any[]>('/api/products');
-  const { data: ledger } = useApi<any[]>('/api/ledger');
-  const { data: production } = useApi<any[]>('/api/production');
-  const { data: sysStats, isLoading: sysStatsLoading } = useApi<any>('/api/system-status');
+  // 1. Fetching Data using useApi with polling for live updates
+  const { data: products } = useApi<any[]>('/api/products', { pollInterval: 3000 });
+  const { data: ledger } = useApi<any[]>('/api/ledger', { pollInterval: 3000 });
+  const { data: production } = useApi<any[]>('/api/production', { pollInterval: 3000 });
+  const { data: sysStats, isLoading: sysStatsLoading } = useApi<any>('/api/system-status', { pollInterval: 5000 });
 
   // 2. State for Live Exchange Rate & Interactive Chart
   const [exchangeRate, setExchangeRate] = useState<number>(71.5); // Default fallback
@@ -349,8 +349,8 @@ export default function Dashboard({ theme, lang, t }: DashboardProps) {
               {lang === 'en' ? 'Total Income' : 'مجموع عایدات'}
               <ChevronDown size={18} className="opacity-0 group-hover:opacity-100 transition-opacity" />
             </p>
-            <h3 className="text-4xl font-black mb-1" dir="ltr">{formatAFN(totalIncome)}</h3>
-            <p className="text-emerald-200 text-sm font-medium mb-4" dir="ltr">≈ {formatUSD(totalIncome)}</p>
+            <h3 className="text-3xl lg:text-4xl font-black mb-1 truncate" dir="ltr" title={formatAFN(totalIncome)}>{formatAFN(totalIncome)}</h3>
+            <p className="text-emerald-200 text-sm font-medium mb-4 truncate" dir="ltr" title={formatUSD(totalIncome)}>≈ {formatUSD(totalIncome)}</p>
             <div className="inline-flex items-center gap-1 bg-white/20 px-3 py-1 rounded-full text-xs font-bold backdrop-blur-sm">
               <ArrowUpCircle size={14} /> +12.5% {lang === 'en' ? 'vs last month' : 'نسبت به ماه قبل'}
             </div>
@@ -368,8 +368,8 @@ export default function Dashboard({ theme, lang, t }: DashboardProps) {
               {lang === 'en' ? 'Total Expenses' : 'مجموع مصارف'}
               <ChevronDown size={18} className="opacity-0 group-hover:opacity-100 transition-opacity" />
             </p>
-            <h3 className="text-4xl font-black mb-1" dir="ltr">{formatAFN(totalExpenses)}</h3>
-            <p className="text-rose-200 text-sm font-medium mb-4" dir="ltr">≈ {formatUSD(totalExpenses)}</p>
+            <h3 className="text-3xl lg:text-4xl font-black mb-1 truncate" dir="ltr" title={formatAFN(totalExpenses)}>{formatAFN(totalExpenses)}</h3>
+            <p className="text-rose-200 text-sm font-medium mb-4 truncate" dir="ltr" title={formatUSD(totalExpenses)}>≈ {formatUSD(totalExpenses)}</p>
             <div className="inline-flex items-center gap-1 bg-white/20 px-3 py-1 rounded-full text-xs font-bold backdrop-blur-sm">
               <ArrowDownCircle size={14} /> -4.2% {lang === 'en' ? 'vs last month' : 'نسبت به ماه قبل'}
             </div>
@@ -387,8 +387,8 @@ export default function Dashboard({ theme, lang, t }: DashboardProps) {
               {lang === 'en' ? 'Net Profit' : 'فایده خالص'}
               <ChevronDown size={18} className="opacity-0 group-hover:opacity-100 transition-opacity" />
             </p>
-            <h3 className="text-4xl font-black mb-1" dir="ltr">{formatAFN(netProfit)}</h3>
-            <p className="text-blue-200 text-sm font-medium mb-4" dir="ltr">≈ {formatUSD(netProfit)}</p>
+            <h3 className="text-3xl lg:text-4xl font-black mb-1 truncate" dir="ltr" title={formatAFN(netProfit)}>{formatAFN(netProfit)}</h3>
+            <p className="text-blue-200 text-sm font-medium mb-4 truncate" dir="ltr" title={formatUSD(netProfit)}>≈ {formatUSD(netProfit)}</p>
             <div className="inline-flex items-center gap-1 bg-white/20 px-3 py-1 rounded-full text-xs font-bold backdrop-blur-sm">
               <Activity size={14} /> {lang === 'en' ? 'Healthy Margin' : 'فایده سالم'}
             </div>
@@ -535,19 +535,19 @@ export default function Dashboard({ theme, lang, t }: DashboardProps) {
               {lang === 'en' ? 'Income vs Expenses (Current Week)' : 'عایدات در مقابل مصارف (هفته جاری)'}
             </h3>
 
-            {/* Scrollable Container for Chart */}
-            <div
-              className="overflow-x-auto custom-scrollbar pb-4"
-              dir="ltr"
-              tabIndex={0}
-              onWheel={(e) => {
-                const container = e.currentTarget;
-                container.scrollLeft += e.deltaY;
-              }}
-            >
-              <div className="h-[400px] min-w-[800px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }} barCategoryGap="20%">
+            {/* Chart Container */}
+            <div className="h-[400px] w-full" dir="ltr">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={chartData}
+                  margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+                  barCategoryGap="20%"
+                  onClick={(state: any) => {
+                    if (state && state.activePayload && state.activePayload.length > 0) {
+                      setSelectedDay(state.activePayload[0].payload);
+                    }
+                  }}
+                >
                     <defs>
                       <linearGradient id="colorIncome" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="#10b981" stopOpacity={0.9}/>
@@ -593,146 +593,85 @@ export default function Dashboard({ theme, lang, t }: DashboardProps) {
                     />
                   </BarChart>
                 </ResponsiveContainer>
-              </div>
             </div>
             <p className="text-sm font-medium text-slate-500 dark:text-slate-400 text-center mt-6 bg-slate-50 dark:bg-slate-800/50 py-3 rounded-xl border border-slate-100 dark:border-slate-800">
               {lang === 'en' ? '💡 Financial Analysis Chart (Click on any bar to view deeper insights)' : '💡 گزارش تحلیلی مالی هوشمند (برای مشاهده دقیق جزئیات و صورت‌حساب، روی ستون هر روز کلیک کنید)'}
             </p>
           </div>
 
-          {/* MAGIC UX FEATURE 3: LEFT-SIDE SLIDE-OUT LEDGER PANEL */}
-          <>
-            {/* Invisible Overlay for Click-Outside-to-Close */}
-            {selectedDay && (
-              <div
-                className="fixed inset-0 z-[90] bg-transparent"
-                onClick={() => setSelectedDay(null)}
-              ></div>
-            )}
 
-            <div
-              className={`fixed top-0 left-0 h-full w-full sm:w-96 bg-white dark:bg-slate-900 z-[100] shadow-2xl border-r dark:border-slate-800 transform transition-transform duration-300 ease-in-out ${selectedDay ? 'translate-x-0' : '-translate-x-full'}`}
-            >
-            {selectedDay && (
-              <div className="h-full flex flex-col">
-                <div className="p-6 border-b dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-800/50">
-                  <div>
-                    <h3 className="text-2xl font-black text-gray-800 dark:text-white">{selectedDay.name}</h3>
-                    <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">{selectedDay.fullName}</p>
-                  </div>
-                  <button onClick={() => setSelectedDay(null)} className="p-2 bg-white dark:bg-slate-700 rounded-full hover:bg-gray-100 dark:hover:bg-slate-600 transition-colors shadow-sm">
-                    <X size={20} className="text-gray-600 dark:text-gray-300" />
-                  </button>
-                </div>
-
-                <div className="p-6 grid grid-cols-2 gap-4 border-b dark:border-slate-800">
-                  <div className="bg-emerald-50 dark:bg-emerald-900/10 p-4 rounded-2xl border border-emerald-100 dark:border-emerald-900/30">
-                    <p className="text-xs font-bold text-emerald-800 dark:text-emerald-400 mb-1">{lang === 'en' ? 'Income' : 'عایدات'}</p>
-                    <p className="text-xl font-black text-emerald-600 dark:text-emerald-500" dir="ltr">{formatAFN(selectedDay.income)}</p>
-                  </div>
-                  <div className="bg-rose-50 dark:bg-rose-900/10 p-4 rounded-2xl border border-rose-100 dark:border-rose-900/30">
-                    <p className="text-xs font-bold text-rose-800 dark:text-rose-400 mb-1">{lang === 'en' ? 'Expenses' : 'مصارف'}</p>
-                    <p className="text-xl font-black text-rose-600 dark:text-rose-500" dir="ltr">{formatAFN(selectedDay.expense)}</p>
-                  </div>
-                </div>
-
-                <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
-                  <h4 className="text-sm font-bold text-gray-500 dark:text-gray-400 mb-4 uppercase tracking-wider">
-                    {lang === 'en' ? 'Detailed Transactions' : 'جزئیات تراکنش‌ها'}
-                  </h4>
-                  <div className="space-y-3">
-                    {selectedDayTransactions.length === 0 ? (
-                      <div className="text-center py-10">
-                        <div className="w-16 h-16 bg-gray-100 dark:bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-3">
-                          <Database size={24} className="text-gray-400" />
-                        </div>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">
-                          {lang === 'en' ? 'No transactions recorded for this day.' : 'هیچ تراکنشی در این روز ثبت نشده است.'}
-                        </p>
-                      </div>
-                    ) : (
-                      selectedDayTransactions.map((tx, idx) => (
-                        <div key={idx} className="flex justify-between items-center p-4 bg-gray-50 dark:bg-slate-800/50 rounded-xl border border-gray-100 dark:border-slate-700 hover:border-blue-200 dark:hover:border-blue-900/50 transition-colors">
-                          <div className="flex items-center gap-3">
-                            <div className={`w-2 h-2 rounded-full ${tx.type === 'INCOME' ? 'bg-emerald-500' : 'bg-rose-500'}`}></div>
-                            <p className="text-sm font-bold text-gray-700 dark:text-gray-300">
-                              {tx.description || (lang === 'en' ? 'No Description' : 'بدون شرح')}
-                            </p>
-                          </div>
-                          <p className={`text-sm font-black ${tx.type === 'INCOME' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`} dir="ltr">
-                            {tx.type === 'INCOME' ? '+' : '-'}{formatAFN(tx.amount)}
-                          </p>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-            </div>
-          </>
         </div>
 
         {/* Right Column: KPIs & Alerts */}
         <div className="space-y-8">
-          {/* 3. Industrial Operational KPIs */}
-          <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 shadow-sm border dark:border-slate-800">
-            <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-4 flex items-center gap-2">
-              <Factory className="text-blue-500" size={20} />
-              {lang === 'en' ? 'Operational KPIs' : 'شاخص‌های عملیاتی فابریکه'}
-            </h3>
+          {/* 3. Selected Day Details */}
+          <div className="bg-white dark:bg-slate-900 rounded-3xl overflow-hidden shadow-sm border dark:border-slate-800 flex flex-col min-h-[400px]">
+             {selectedDay ? (
+               <div className="flex flex-col h-full animate-in fade-in slide-in-from-right-4 duration-500">
+                 <div className="p-6 border-b dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-800/50 flex-shrink-0">
+                   <div>
+                     <h3 className="text-xl font-black text-gray-800 dark:text-white">{selectedDay.name}</h3>
+                     <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">{selectedDay.fullName}</p>
+                   </div>
+                   <button onClick={() => setSelectedDay(null)} className="p-2 bg-white dark:bg-slate-700 rounded-full hover:bg-gray-100 dark:hover:bg-slate-600 transition-colors shadow-sm">
+                     <X size={18} className="text-gray-500 dark:text-gray-300" />
+                   </button>
+                 </div>
 
-            {/* Active Machinery */}
-            <div className="mb-6">
-              <div className="flex justify-between items-end mb-2">
-                <span className="text-sm font-bold text-gray-600 dark:text-gray-400">
-                  {lang === 'en' ? 'Active Machinery' : 'ماشین‌آلات فعال'}
-                </span>
-                <span className="text-xl font-black text-blue-600 dark:text-blue-400" dir="ltr">12 / 14</span>
-              </div>
-              <div className="w-full bg-gray-100 dark:bg-slate-800 rounded-full h-3 overflow-hidden">
-                <div className="bg-gradient-to-r from-blue-500 to-indigo-600 h-3 rounded-full" style={{ width: '85%' }}></div>
-              </div>
-              <p className="text-xs text-gray-500 mt-2 text-end">85% {lang === 'en' ? 'Efficiency' : 'راندمان (کارایی)'}</p>
-            </div>
+                 <div className="p-6 space-y-6 flex-1 overflow-y-auto custom-scrollbar">
+                   <div className="grid grid-cols-2 gap-4">
+                     <div className="bg-emerald-50 dark:bg-emerald-900/20 p-4 rounded-2xl border border-emerald-100 dark:border-emerald-800/30 overflow-hidden">
+                       <p className="text-emerald-800 dark:text-emerald-400 text-xs font-bold mb-1">{lang === 'en' ? 'Income' : 'عایدات'}</p>
+                       <p className="text-lg font-black text-emerald-600 dark:text-emerald-300 truncate" dir="ltr" title={formatAFN(selectedDay.income)}>{formatAFN(selectedDay.income)}</p>
+                     </div>
+                     <div className="bg-rose-50 dark:bg-rose-900/20 p-4 rounded-2xl border border-rose-100 dark:border-rose-800/30 overflow-hidden">
+                       <p className="text-rose-800 dark:text-rose-400 text-xs font-bold mb-1">{lang === 'en' ? 'Expense' : 'مصارف'}</p>
+                       <p className="text-lg font-black text-rose-600 dark:text-rose-300 truncate" dir="ltr" title={formatAFN(selectedDay.expense)}>{formatAFN(selectedDay.expense)}</p>
+                     </div>
+                   </div>
 
-            {/* Production Stats PieChart */}
-            <div>
-              <span className="text-sm font-bold text-gray-600 dark:text-gray-400 mb-2 block">
-                {lang === 'en' ? 'Production Distribution' : 'توزیع تولیدات'}
-              </span>
-              <div className="h-[150px] w-full" dir="ltr">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={productionStats}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={40}
-                      outerRadius={60}
-                      paddingAngle={5}
-                      dataKey="value"
-                    >
-                      {productionStats.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color} />
-                      ))}
-                    </Pie>
-                    <Tooltip
-                      formatter={(value: number) => formatNumber(value)}
-                      contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-              <div className="flex justify-center gap-4 mt-2">
-                {productionStats.map((stat, i) => (
-                  <div key={i} className="flex items-center gap-1 text-xs font-bold text-gray-600 dark:text-gray-300">
-                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: stat.color }}></span>
-                    {stat.name}
-                  </div>
-                ))}
-              </div>
-            </div>
+                   <div>
+                     <h4 className="text-sm font-bold text-gray-800 dark:text-gray-200 mb-4 flex items-center justify-between">
+                       {lang === 'en' ? 'Transaction Details' : 'جزئیات تراکنش‌ها'}
+                       <span className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 py-0.5 px-2 rounded-full text-xs">{selectedDay.transactions?.length || 0}</span>
+                     </h4>
+
+                     <div className="space-y-3">
+                       {selectedDay.transactions?.length === 0 ? (
+                         <div className="text-center py-8 text-gray-400 dark:text-slate-500 border-2 border-dashed border-gray-100 dark:border-slate-800 rounded-xl">
+                           <Activity className="mx-auto mb-2 opacity-50" size={24} />
+                           {lang === 'en' ? 'No transactions recorded' : 'تراکنشی ثبت نشده است'}
+                         </div>
+                       ) : (
+                         selectedDay.transactions?.map((tx: any, idx: number) => (
+                           <div key={idx} className="flex justify-between items-center p-3 hover:bg-gray-50 dark:hover:bg-slate-800/50 rounded-xl transition-colors border border-gray-100 dark:border-slate-800 group">
+                             <div className="flex items-center gap-3">
+                               <div className={`w-2 h-2 rounded-full ${tx.type === 'INCOME' ? 'bg-emerald-500' : 'bg-rose-500'}`}></div>
+                               <p className="text-sm font-bold text-gray-700 dark:text-gray-300 truncate max-w-[120px]" title={tx.description}>{tx.description}</p>
+                             </div>
+                             <p className={`text-sm font-black truncate max-w-[120px] ${tx.type === 'INCOME' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`} dir="ltr" title={formatAFN(tx.amount)}>
+                               {tx.type === 'INCOME' ? '+' : '-'}{formatAFN(tx.amount)}
+                             </p>
+                           </div>
+                         ))
+                       )}
+                     </div>
+                   </div>
+                 </div>
+               </div>
+             ) : (
+               <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
+                 <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-full shadow-sm mb-4 text-blue-500">
+                   <CalendarDays size={32} />
+                 </div>
+                 <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200 mb-2">
+                   {lang === 'en' ? 'Select a day' : 'انتخاب یک روز'}
+                 </h3>
+                 <p className="text-sm text-slate-500 dark:text-slate-400 max-w-[200px]">
+                   {lang === 'en' ? 'Click on any bar in the chart to view detailed financial breakdown.' : 'برای مشاهده جزئیات مالی، روی یکی از ستون‌های نمودار کلیک کنید.'}
+                 </p>
+               </div>
+             )}
           </div>
 
           {/* 4. Interconnected Low Stock Alerts */}

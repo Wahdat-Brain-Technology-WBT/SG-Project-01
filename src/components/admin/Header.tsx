@@ -34,7 +34,7 @@ export default function Header({
       {/* LEFT SIDE: Title + Notifications + Refresh */}
       <div className="flex items-center gap-6">
         <div className="flex items-center gap-4">
-          <button onClick={() => setSidebarOpen(!isSidebarOpen)} className="lg:hidden p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg dark:text-white transition-colors">
+          <button onClick={() => setSidebarOpen(!isSidebarOpen)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg dark:text-white transition-colors">
             <Menu size={24} />
           </button>
           <h2 className="font-black text-2xl text-slate-800 dark:text-white tracking-tight hidden sm:block">

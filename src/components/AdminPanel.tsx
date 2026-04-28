@@ -918,10 +918,12 @@ export default function AdminPanel() {
       <button
         onClick={() => {
           setActiveTab(id);
-          setIsSidebarOpen(false); // Hide sidebar on mobile when an item is clicked
+          if (window.innerWidth < 1024) {
+            setSidebarOpen(false); // Hide sidebar only on mobile when an item is clicked
+          }
         }}
         className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
-          activeTab === id ? 'bg-blue-600 text-white' : 'hover:bg-gray-100 dark:hover:bg-slate-800 text-gray-600 dark:text-gray-400'
+          activeTab === id ? 'bg-blue-600 dark:bg-blue-600/20 text-white dark:text-blue-400' : 'hover:bg-gray-100 dark:hover:bg-slate-800 text-gray-600 dark:text-gray-400'
         }`}
       >
         <Icon size={20} />
@@ -1015,7 +1017,7 @@ export default function AdminPanel() {
       )}
 
       {/* Sidebar */}
-      <aside className={`print:hidden bg-white dark:bg-slate-900 border-e dark:border-slate-800 w-64 p-4 flex flex-col gap-6 fixed top-0 h-full z-20 transition-transform ${isSidebarOpen ? 'translate-x-0' : (isRTL ? 'translate-x-full' : '-translate-x-full')} ${isRTL ? 'right-0 border-l' : 'left-0 border-r'} lg:relative lg:translate-x-0`}>
+      <aside className={`print:hidden bg-white dark:bg-slate-900 border-gray-200 dark:border-slate-800 shrink-0 flex flex-col gap-6 fixed top-0 h-full z-20 transition-all duration-300 ease-in-out lg:relative overflow-hidden ${isSidebarOpen ? 'w-64 p-4 translate-x-0' : `w-0 p-0 ${isRTL ? 'translate-x-[100%]' : '-translate-x-[100%]'}`} ${isRTL ? 'right-0 border-l' : 'left-0 border-r'}`}>
         <div className="flex items-center gap-3 px-2">
           <div className="w-10 h-10 bg-blue-700 rounded-xl flex items-center justify-center text-white font-bold text-xl">SG</div>
           <h1 className="font-bold text-lg text-gray-800 dark:text-white tracking-tight">Sheen Ghazy</h1>
