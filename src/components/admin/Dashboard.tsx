@@ -63,19 +63,6 @@ export default function Dashboard({ theme, lang, t }: DashboardProps) {
   const netProfit = totalIncome - totalExpenses;
 
   const financialPeriods = useMemo(() => {
-    const today = new Date();
-    const todayStr = today.toLocaleDateString('en-CA');
-
-    // Day of week starts from saturday (in afghanistan) or just 7 days ago
-    const startOfWeek = new Date(today);
-    const dayOfWeek = today.getDay(); // 0 = Sun, 1 = Mon, ..., 6 = Sat
-    const daysSinceSaturday = dayOfWeek === 6 ? 0 : dayOfWeek + 1;
-    startOfWeek.setDate(today.getDate() - daysSinceSaturday);
-    const startOfWeekStr = startOfWeek.toLocaleDateString('en-CA');
-
-    const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1).toLocaleDateString('en-CA');
-    const startOfYear = new Date(today.getFullYear(), 0, 1).toLocaleDateString('en-CA');
-
     const stats = {
       daily: { INCOME: 0, EXPENSE: 0, PROFIT: 0 },
       weekly: { INCOME: 0, EXPENSE: 0, PROFIT: 0 },
@@ -83,32 +70,50 @@ export default function Dashboard({ theme, lang, t }: DashboardProps) {
       yearly: { INCOME: 0, EXPENSE: 0, PROFIT: 0 },
     };
 
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Weekly setup
+    const dayOfWeek = today.getDay();
+    const daysSinceSaturday = dayOfWeek === 6 ? 0 : dayOfWeek + 1;
+    const startOfWeek = new Date(today);
+    startOfWeek.setDate(today.getDate() - daysSinceSaturday);
+
+    // Jalali setup for Month & Year
+    const jToday = jalaali.toJalaali(today);
+
     safeLedger.forEach(l => {
-      const lDate = new Date(l.date || l.createdAt).toLocaleDateString('en-CA');
+      const txDate = new Date(l.date || l.createdAt);
+
+      // Reset time for date-only comparisons
+      const txDateMidnight = new Date(txDate);
+      txDateMidnight.setHours(0, 0, 0, 0);
+
       const amt = l.amount || 0;
 
       // Daily
-      if (lDate === todayStr) {
+      if (txDateMidnight.getTime() === today.getTime()) {
         if (l.type === 'INCOME') stats.daily.INCOME += amt;
         if (l.type === 'EXPENSE') stats.daily.EXPENSE += amt;
       }
 
-      // Weekly
-      if (lDate >= startOfWeekStr && lDate <= todayStr) {
+      // Weekly (from startOfWeek to today)
+      if (txDateMidnight >= startOfWeek && txDateMidnight <= today) {
         if (l.type === 'INCOME') stats.weekly.INCOME += amt;
         if (l.type === 'EXPENSE') stats.weekly.EXPENSE += amt;
       }
 
-      // Monthly
-      if (lDate >= startOfMonth && lDate <= todayStr) {
-        if (l.type === 'INCOME') stats.monthly.INCOME += amt;
-        if (l.type === 'EXPENSE') stats.monthly.EXPENSE += amt;
-      }
-
-      // Yearly
-      if (lDate >= startOfYear && lDate <= todayStr) {
+      // Jalali Monthly & Yearly
+      const jTx = jalaali.toJalaali(txDateMidnight);
+      if (jTx.jy === jToday.jy) { // Yearly
         if (l.type === 'INCOME') stats.yearly.INCOME += amt;
         if (l.type === 'EXPENSE') stats.yearly.EXPENSE += amt;
+
+        // Monthly (must be in the same year)
+        if (jTx.jm === jToday.jm) {
+          if (l.type === 'INCOME') stats.monthly.INCOME += amt;
+          if (l.type === 'EXPENSE') stats.monthly.EXPENSE += amt;
+        }
       }
     });
 
@@ -242,30 +247,35 @@ export default function Dashboard({ theme, lang, t }: DashboardProps) {
 
   const downloadFinancialReport = (type: 'INCOME' | 'EXPENSE' | 'PROFIT', period: 'daily' | 'weekly' | 'monthly' | 'yearly') => {
     let rows: any[] = [];
+    rows.push([lang === 'dr' ? 'تاریخ' : 'Date', lang === 'dr' ? 'شرح' : 'Description', lang === 'dr' ? 'مبلغ (افغانی)' : 'Amount (AFN)', lang === 'dr' ? 'نوعیت' : 'Type']);
 
-    // Header
-    rows.push(['Date', 'Description', 'Amount (AFN)', 'Type']);
-
-    // We would filter ledger based on period here. Since the user wants to download report, let's keep it simple and dump period totals or exact txns.
-    // For a highly advanced feel, let's dump the exact transactions for that period.
     const today = new Date();
-    const todayStr = today.toLocaleDateString('en-CA');
-    const startOfWeek = new Date(today);
+    today.setHours(0, 0, 0, 0);
+
     const dayOfWeek = today.getDay();
     const daysSinceSaturday = dayOfWeek === 6 ? 0 : dayOfWeek + 1;
+    const startOfWeek = new Date(today);
     startOfWeek.setDate(today.getDate() - daysSinceSaturday);
-    const startOfWeekStr = startOfWeek.toLocaleDateString('en-CA');
-    const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1).toLocaleDateString('en-CA');
-    const startOfYear = new Date(today.getFullYear(), 0, 1).toLocaleDateString('en-CA');
 
-    let startDate = todayStr;
-    if (period === 'weekly') startDate = startOfWeekStr;
-    if (period === 'monthly') startDate = startOfMonth;
-    if (period === 'yearly') startDate = startOfYear;
+    const jToday = jalaali.toJalaali(today);
 
     const filteredLedger = safeLedger.filter(l => {
-      const lDate = new Date(l.date || l.createdAt).toLocaleDateString('en-CA');
-      const inRange = lDate >= startDate && lDate <= todayStr;
+      const txDate = new Date(l.date || l.createdAt);
+      const txDateMidnight = new Date(txDate);
+      txDateMidnight.setHours(0, 0, 0, 0);
+
+      let inRange = false;
+      const jTx = jalaali.toJalaali(txDateMidnight);
+
+      if (period === 'daily') {
+        inRange = txDateMidnight.getTime() === today.getTime();
+      } else if (period === 'weekly') {
+        inRange = txDateMidnight >= startOfWeek && txDateMidnight <= today;
+      } else if (period === 'monthly') {
+        inRange = jTx.jy === jToday.jy && jTx.jm === jToday.jm;
+      } else if (period === 'yearly') {
+        inRange = jTx.jy === jToday.jy;
+      }
 
       if (!inRange) return false;
       if (type === 'INCOME') return l.type === 'INCOME';
@@ -274,21 +284,29 @@ export default function Dashboard({ theme, lang, t }: DashboardProps) {
     });
 
     filteredLedger.forEach(l => {
+      // formatting string
+      const faType = l.type === 'INCOME' ? 'عاید' : 'مصرف';
       rows.push([
         new Date(l.date || l.createdAt).toLocaleDateString('fa-IR'),
         l.description || '-',
         l.amount,
-        l.type
+        lang === 'dr' ? faType : l.type
       ]);
     });
 
     let csvContent = "data:text/csv;charset=utf-8,\uFEFF"
       + rows.map(e => e.join(",")).join("\n");
 
+    const enType = type === 'INCOME' ? 'Income' : type === 'EXPENSE' ? 'Expense' : 'Profit';
+    const faTypeTitle = type === 'INCOME' ? 'عایدات' : type === 'EXPENSE' ? 'مصارف' : 'فایده_خالص';
+    const faPeriod = period === 'daily' ? 'روزانه' : period === 'weekly' ? 'هفته_وار' : period === 'monthly' ? 'ماهانه' : 'سالانه';
+
+    const fileName = lang === 'dr' ? `گزارش_${faTypeTitle}_${faPeriod}_شین_غزی_بابا.csv` : `SheenGhazy_${enType}_${period}_report.csv`;
+
     var encodedUri = encodeURI(csvContent);
     var link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `SheenGhazy_${type}_${period}_report.csv`);
+    link.setAttribute("download", fileName);
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -424,7 +442,7 @@ export default function Dashboard({ theme, lang, t }: DashboardProps) {
                       <Calendar size={18} />
                       {lang === 'en' ? 'Today' : 'گزارش روزانه (امروز)'}
                     </div>
-                    <p className={`text-3xl font-black mb-1`} dir="ltr">
+                    <p className="text-xl xl:text-2xl font-black mb-1 truncate" dir="ltr" title={formatAFN(financialPeriods.daily[activeFinanceCard])}>
                       {formatAFN(financialPeriods.daily[activeFinanceCard])}
                     </p>
                     <p className="text-gray-400 text-sm font-medium mb-6" dir="ltr">≈ {formatUSD(financialPeriods.daily[activeFinanceCard])}</p>
@@ -445,7 +463,7 @@ export default function Dashboard({ theme, lang, t }: DashboardProps) {
                       <CalendarDays size={18} />
                       {lang === 'en' ? 'This Week' : 'گزارش هفته‌وار (هفته جاری)'}
                     </div>
-                    <p className={`text-3xl font-black mb-1`} dir="ltr">
+                    <p className="text-xl xl:text-2xl font-black mb-1 truncate" dir="ltr" title={formatAFN(financialPeriods.weekly[activeFinanceCard])}>
                       {formatAFN(financialPeriods.weekly[activeFinanceCard])}
                     </p>
                     <p className="text-gray-400 text-sm font-medium mb-6" dir="ltr">≈ {formatUSD(financialPeriods.weekly[activeFinanceCard])}</p>
@@ -467,7 +485,7 @@ export default function Dashboard({ theme, lang, t }: DashboardProps) {
                       <CalendarCheck size={18} />
                       {lang === 'en' ? 'This Month' : 'گزارش ماهانه (ماه جاری)'}
                     </div>
-                    <p className={`text-3xl font-black mb-1`} dir="ltr">
+                    <p className="text-xl xl:text-2xl font-black mb-1 truncate" dir="ltr" title={formatAFN(financialPeriods.monthly[activeFinanceCard])}>
                       {formatAFN(financialPeriods.monthly[activeFinanceCard])}
                     </p>
                     <p className="text-gray-400 text-sm font-medium mb-6" dir="ltr">≈ {formatUSD(financialPeriods.monthly[activeFinanceCard])}</p>
@@ -489,7 +507,7 @@ export default function Dashboard({ theme, lang, t }: DashboardProps) {
                       <CalendarRange size={18} />
                       {lang === 'en' ? 'This Year' : 'گزارش سالانه (سال جاری)'}
                     </div>
-                    <p className={`text-3xl font-black mb-1 text-white`} dir="ltr">
+                    <p className="text-xl xl:text-2xl font-black mb-1 text-white truncate" dir="ltr" title={formatAFN(financialPeriods.yearly[activeFinanceCard])}>
                       {formatAFN(financialPeriods.yearly[activeFinanceCard])}
                     </p>
                     <p className="text-slate-400 text-sm font-medium mb-6" dir="ltr">≈ {formatUSD(financialPeriods.yearly[activeFinanceCard])}</p>
