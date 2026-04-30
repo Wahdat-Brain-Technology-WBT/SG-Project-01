@@ -3,7 +3,7 @@ import { motion } from 'motion/react';
 import { Fingerprint, MonitorPlay, CheckCircle2, RotateCcw, AlertTriangle, Users } from 'lucide-react';
 
 export default function BiometricsDashboard({ isRTL = true }: { isRTL?: boolean }) {
-  const [deviceIp, setDeviceIp] = useState("192.168.1.201");
+  const [deviceIp, setDeviceIp] = useState("192.168.50.99");
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'success' | 'error'>('idle');
 
@@ -129,10 +129,10 @@ export default function BiometricsDashboard({ isRTL = true }: { isRTL?: boolean 
             </div>
 
             <div className="text-xs text-slate-500 bg-black/40 p-4 rounded-xl border border-white/5 font-mono leading-relaxed" dir="ltr">
-              > {`ssh zkteco@${deviceIp}`}<br/>
-              > Initializing connection...<br/>
-              > Port 4370 reachable.<br/>
-              > Waiting for manual sync trigger...
+              &gt; {`ssh zkteco@${deviceIp}`}<br/>
+              &gt; Initializing connection...<br/>
+              &gt; Port 4370 reachable.<br/>
+              &gt; Waiting for manual sync trigger...
             </div>
           </div>
         </div>

@@ -602,96 +602,9 @@ def delete_product(id: int, db: Session = Depends(get_db)):
     db_product = db.query(Product).filter(Product.id == id).first()
     if not db_product:
         raise HTTPException(status_code=404, detail="محصول یافت نشد")
-
-    # Handle foreign keys (Production and OrderItems)
-    db.query(Production).filter(Production.ProductId == id).delete(synchronize_session=False)
-    db.query(OrderItem).filter(OrderItem.ProductId == id).delete(synchronize_session=False)
-
     db.delete(db_product)
     db.commit()
     return {"message": "محصول با موفقیت حذف شد"}
-
-
-class DirectSaleCreate(BaseModel):
-    CustomerId: Optional[int] = None
-    customer_name: Optional[str] = None
-    items: List[DirectSaleItem]
-
-
-@app.post("/api/orders/direct")
-def create_direct_sale(sale: DirectSaleCreate, db: Session = Depends(get_db)):
-    total_amount = 0
-    items_out = []
-
-    # 1. Handle Customer
-    customer = None
-    if sale.CustomerId:
-        customer = db.query(Customer).filter(Customer.id == sale.CustomerId).first()
-    if not customer and sale.customer_name:
-        customer = db.query(Customer).filter(Customer.whatsapp_number == sale.customer_name).first()
-        if not customer:
-            customer = Customer(full_name=sale.customer_name, whatsapp_number="مشتری مرکزی: " + sale.customer_name)
-            db.add(customer)
-            db.commit()
-            db.refresh(customer)
-
-    if not customer:
-        raise HTTPException(status_code=400, detail="مشتری مشخص نشده است")
-
-    # 2. Create Order
-    new_order = Order(CustomerId=customer.id, status='COMPLETED')
-    db.add(new_order)
-    db.commit()
-    db.refresh(new_order)
-
-    # 3. Handle Items
-    for item in sale.items:
-        product = db.query(Product).filter(Product.id == item.ProductId).first()
-        if not product or product.stock_quantity < item.quantity:
-            raise HTTPException(status_code=400, detail=f"موجودی ناکافی برای محصول ID: {item.ProductId}")
-
-        product.stock_quantity -= item.quantity
-        total_amount += item.unit_price * item.quantity
-
-        order_item = OrderItem(
-            OrderId=new_order.id,
-            ProductId=product.id,
-            quantity=item.quantity,
-            unit_price=item.unit_price
-        )
-        db.add(order_item)
-
-        items_out.append({
-            "product_name": product.name,
-            "size": product.size,
-            "quantity": item.quantity,
-            "unit_price": item.unit_price,
-            "total": item.unit_price * item.quantity
-        })
-
-    new_order.total_amount = total_amount
-
-    # 4. Handle Ledger
-    db_ledger = Ledger(
-        type="INCOME",
-        amount=total_amount,
-        description=f"فروش مستقیم (فاکتور #{new_order.id}) - مشتری: {customer.full_name}",
-        department="GENERAL",
-        order_id=new_order.id
-    )
-    db.add(db_ledger)
-    db.commit()
-
-    return {
-        "success": True,
-        "order": {
-            "id": new_order.id,
-            "date": new_order.createdAt.isoformat(),
-            "customer_name": customer.full_name,
-            "total_amount": total_amount,
-            "items": items_out
-        }
-    }
 
 
 @app.get("/api/orders")
@@ -762,74 +675,102 @@ def quick_attendance(req: QuickAttendanceCreate, db: Session = Depends(get_db)):
 
 
 class SyncRequest(BaseModel):
-    device_ip: str = "192.168.1.201"
+    device_ip: str = "192.168.50.99"
 
 
 @app.post("/api/attendance/sync")
 def sync_zkteco(req: SyncRequest = None, db: Session = Depends(get_db)):
     """
-    MOCKED ZKTECO ENDPOINT (Hardware not yet available).
-    Simulates successful connection and injects fake attendance records.
+    Connect to ZKTeco K70 device to fetch attendance records
     """
+    device_ip = req.device_ip if req and req.device_ip else "192.168.50.99"
+
+    zk_client = ZK(device_ip, port=4370, timeout=10, password=0, force_udp=False, ommit_ping=False)
+
     try:
-        # Simulate network latency
-        import time
-        time.sleep(1.5)
+        conn = zk_client.connect()
+        conn.disable_device()  # قفل دستگاه در حین دانلود اطلاعات
 
-        # Ensure we have at least one employee in the database
-        employees = db.query(Employee).limit(3).all()
-        if not employees:
-            return {
-                "success": False,
-                "message": "هیچ کارمندی برای ثبت حاضری آزمایشی یافت نشد. لطفاً یک کارمند ثبت کنید."
-            }
+        attendances = conn.get_attendance()  # دریافت لاگ‌ها
 
-        today_str = datetime.datetime.now().strftime("%Y-%m-%d")
+        conn.enable_device()
+        conn.disconnect()
 
-        # Fake punch data matching your requirements
-        mock_punches = [
-            {"check_in": "07:45 AM", "check_out": "05:00 PM", "status": "PRESENT"},
-            {"check_in": "08:15 AM", "check_out": "05:10 PM", "status": "LATE"},
-            {"check_in": "07:50 AM", "check_out": "04:00 PM", "status": "PRESENT"}
-        ]
+        if not attendances:
+            return {"success": True, "message": "هیچ رکورد حاضری در دستگاه یافت نشد.", "records_added": 0}
 
         records_added = 0
-        for idx, emp in enumerate(employees):
-            # Select mock data for this user
-            mock_data = mock_punches[idx % len(mock_punches)]
+        records_updated = 0
 
-            db_att = db.query(Attendance).filter(
-                Attendance.EmployeeId == emp.id,
-                Attendance.date == today_str
-            ).first()
+        from collections import defaultdict
+        daily_records = defaultdict(lambda: defaultdict(list))
 
-            if db_att:
-                db_att.check_in = mock_data["check_in"]
-                db_att.check_out = mock_data["check_out"]
-                db_att.status = mock_data["status"]
-            else:
-                new_att = Attendance(
-                    EmployeeId=emp.id,
-                    date=today_str,
-                    check_in=mock_data["check_in"],
-                    check_out=mock_data["check_out"],
-                    status=mock_data["status"]
-                )
-                db.add(new_att)
+        for att in attendances:
+            try:
+                emp_id = int(att.user_id)
+            except ValueError:
+                continue
 
-            records_added += 1
+            date_str = att.timestamp.strftime("%Y-%m-%d")
+            daily_records[emp_id][date_str].append(att.timestamp)
+
+        for emp_id, dates in daily_records.items():
+            emp = db.query(Employee).filter(Employee.id == emp_id).first()
+            if not emp:
+                continue
+
+            for date_str, timestamps in dates.items():
+                timestamps.sort()
+
+                check_in_dt = timestamps[0]
+                check_out_dt = timestamps[-1] if len(timestamps) > 1 else None
+
+                check_in_str = check_in_dt.strftime("%I:%M %p")
+                check_out_str = check_out_dt.strftime("%I:%M %p") if check_out_dt else None
+
+                status = "PRESENT"
+                if check_in_dt.hour > 8 or (check_in_dt.hour == 8 and check_in_dt.minute > 15):
+                    status = "LATE"
+
+                db_att = db.query(Attendance).filter(
+                    Attendance.EmployeeId == emp_id,
+                    Attendance.date == date_str
+                ).first()
+
+                if db_att:
+                    updated = False
+                    if not db_att.check_in or db_att.check_in != check_in_str:
+                        db_att.check_in = check_in_str
+                        updated = True
+                    if check_out_str and (not db_att.check_out or db_att.check_out != check_out_str):
+                        db_att.check_out = check_out_str
+                        updated = True
+
+                    if db_att.status in ["ABSENT", "PRESENT"] and status == "LATE":
+                        db_att.status = status
+                        updated = True
+
+                    if updated:
+                        records_updated += 1
+                else:
+                    new_att = Attendance(
+                        EmployeeId=emp_id,
+                        date=date_str,
+                        check_in=check_in_str,
+                        check_out=check_out_str,
+                        status=status
+                    )
+                    db.add(new_att)
+                    records_added += 1
 
         db.commit()
 
-        return {
-            "success": True,
-            "message": "همگامسازی (آزمایشی) با موفقیت انجام شد",
-            "records_added": records_added
-        }
+        msg = f"همگام‌سازی با موفقیت انجام شد. ({records_added} ورودی جدید، {records_updated} بروزرسانی)"
+        return {"success": True, "message": msg, "records_added": records_added}
 
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"خطای سرور در همگام‌سازی آزمایشی: {str(e)}")
+        return {"success": False, "message": f"ارتباط با دستگاه ناموفق بود: {str(e)}"}
 
 
 @app.get("/api/attendance/report")
