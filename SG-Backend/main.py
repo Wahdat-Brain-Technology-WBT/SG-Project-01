@@ -226,10 +226,16 @@ def upgrade_database_schema(engine):
 
 
 # اجرای مایگریشن‌ها قبل از ایجاد جداول
-upgrade_database_schema(engine)
-
-# ساخت تمام جداول در دیتابیس
-Base.metadata.create_all(bind=engine)
+print("--- Checking Database Connection & Running Migrations ---")
+try:
+    with engine.connect() as conn:
+        print("--- Database connection SUCCESSFUL! ---")
+    upgrade_database_schema(engine)
+    # ساخت تمام جداول در دیتابیس
+    Base.metadata.create_all(bind=engine)
+except Exception as e:
+    print(
+        f"\n!!!! DATABASE CONNECTION ERROR !!!!\nخطا در اتصال به دیتابیس PostgreSQL: {str(e)}\nلطفاً مطمئن شوید که سرویس PostgreSQL روشن است و نام کاربری/رمز عبور صحیح است.\n")
 
 
 def init_default_admin():
@@ -1046,11 +1052,19 @@ def get_employees(db: Session = Depends(get_db)):
 
 @app.post("/api/employees")
 def create_employee(emp: EmployeeCreate, db: Session = Depends(get_db)):
-    db_emp = Employee(**emp.model_dump(exclude_unset=True))
-    db.add(db_emp)
-    db.commit()
-    db.refresh(db_emp)
-    return db_emp
+    print(f"--- Reached create_employee with data: {emp.model_dump()} ---")
+    try:
+        db_emp = Employee(**emp.model_dump(exclude_unset=True))
+        db.add(db_emp)
+        db.commit()
+        db.refresh(db_emp)
+        print(f"--- Successfully created employee with ID: {db_emp.id} ---")
+        return db_emp
+    except Exception as e:
+        db.rollback()
+        print(f"--- Error creating employee: {str(e)} ---")
+        raise HTTPException(status_code=400,
+                            detail=f"خطا در ذخیره اطلاعات (شاید ID دستگاه حاضری یا نام تکراری باشد): {str(e)}")
 
 
 @app.delete("/api/employees/{emp_id}")

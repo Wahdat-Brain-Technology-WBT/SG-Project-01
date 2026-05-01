@@ -546,6 +546,9 @@ export default function AdminPanel() {
     } catch (error: any) {
       clearTimeout(id);
       console.error(`[FETCH] Error: ${url} - ${error.message}`);
+      if (error.name === 'AbortError' || error.message.includes('aborted')) {
+        throw new Error('سیستم نتوانست با سرور بک‌اند ارتباط برقرار کند (Timeout). فایروال سرور فیزیکی را خاموش کرده یا پورت 8000 را باز کنید و مطمئن شوید سرور در حال اجراست.');
+      }
       throw error;
     }
   };
