@@ -196,6 +196,14 @@ def upgrade_database_schema(engine):
                 conn.rollback()
                 print(f"Migration Notice (Employees): {str(e)}")
 
+        if "zkteco_id" not in employees_columns:
+            try:
+                conn.execute(text("ALTER TABLE \"Employees\" ADD COLUMN zkteco_id INTEGER UNIQUE"))
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+                print(f"Migration Notice (zkteco_id): {str(e)}")
+
         # Check if check_in exists in Attendances
         if inspector.has_table("Attendances"):
             attendances_columns = [col['name'] for col in inspector.get_columns("Attendances")]
@@ -207,6 +215,14 @@ def upgrade_database_schema(engine):
                 except Exception as e:
                     conn.rollback()
                     print(f"Migration Notice (Attendances): {str(e)}")
+
+            if "deduction_amount" not in attendances_columns:
+                try:
+                    conn.execute(text("ALTER TABLE \"Attendances\" ADD COLUMN deduction_amount FLOAT DEFAULT 0.0"))
+                    conn.commit()
+                except Exception as e:
+                    conn.rollback()
+                    print(f"Migration Notice (deduction_amount): {str(e)}")
 
 
 # اجرای مایگریشن‌ها قبل از ایجاد جداول

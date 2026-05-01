@@ -281,6 +281,16 @@ export default function AdminPanel() {
     setTimeout(() => setToast(null), 5000);
   };
 
+  const getErrorMsg = (data: any, defaultMsg: string): string => {
+    if (!data) return defaultMsg;
+    if (data.error && typeof data.error === 'string') return data.error;
+    if (data.detail) {
+      if (typeof data.detail === 'string') return data.detail;
+      if (Array.isArray(data.detail)) return data.detail.map((e: any) => `${e.loc?.join('.')} ${e.msg}`).join(' | ');
+    }
+    return defaultMsg;
+  };
+
   const handleCreateDirectSale = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isSaving) return;
@@ -316,7 +326,7 @@ export default function AdminPanel() {
         showToast(lang === 'dr' ? 'فروش با موفقیت ثبت شد' : 'Sale saved successfully', 'success');
       } else {
         const data = await res.json();
-        showToast(data.error || 'Failed to save sale', 'error');
+        showToast(getErrorMsg(data, 'Failed to save sale'), 'error');
       }
     } catch (error) {
       showToast('Error connecting to server', 'error');
@@ -357,11 +367,15 @@ export default function AdminPanel() {
       if (res.ok) {
         fetchData(); // Refresh employees
         setIsAddEmployeeModalOpen(false);
-        setNewEmployee({ full_name: '', father_name: '', province: '', position: '', phone: '', salary: '' });
+        setNewEmployee({ full_name: '', father_name: '', province: '', position: '', phone: '', salary: '', zkteco_id: '' });
         showToast(lang === 'dr' ? 'کارمند با موفقیت ثبت شد' : 'Employee added successfully', 'success');
       } else {
-        const data = await res.json();
-        showToast(data.detail || data.error || 'Failed to add employee', 'error');
+        try {
+          const data = await res.json();
+          showToast(getErrorMsg(data, 'Failed to add employee'), 'error');
+        } catch (e) {
+          showToast('Server returned an error', 'error');
+        }
       }
     } catch (error) {
       showToast('Error connecting to server', 'error');
@@ -397,7 +411,7 @@ export default function AdminPanel() {
         showToast(lang === 'dr' ? 'تولید با موفقیت ثبت شد' : 'Production added successfully', 'success');
       } else {
         const data = await res.json();
-        showToast(data.error || 'Failed to add production', 'error');
+        showToast(getErrorMsg(data, 'Failed to add production'), 'error');
       }
     } catch (error) {
       showToast('Error connecting to server', 'error');
@@ -789,7 +803,7 @@ export default function AdminPanel() {
         showToast(lang === 'dr' ? 'محصول با موفقیت ثبت شد' : 'Product added successfully', 'success');
       } else {
         const data = await res.json();
-        showToast(data.error || 'Failed to add product', 'error');
+        showToast(getErrorMsg(data, 'Failed to add product'), 'error');
       }
     } catch (error: any) {
       showToast('Error connecting to server', 'error');
