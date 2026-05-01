@@ -152,6 +152,20 @@ class User(Base):
 # ==========================================
 from sqlalchemy import inspect
 
+# Fix for Passlib mapping error with newer bcrypt versions
+import logging
+logging.getLogger("passlib").setLevel(logging.ERROR)
+
+# Monkeypatch passlib if needed for bcrypt 4.0+
+try:
+    import bcrypt
+    if not hasattr(bcrypt, "__about__") or not hasattr(bcrypt.__about__, "__version__"):
+        class FakeAbout:
+            def __init__(self): self.__version__ = getattr(bcrypt, "__version__", "4.0.0")
+        bcrypt.__about__ = FakeAbout()
+except ImportError:
+    pass
+
 def upgrade_database_schema(engine):
     """
     Safely adds new columns to the SQLite/PostgreSQL database
@@ -164,8 +178,21 @@ def upgrade_database_schema(engine):
         return
 
     with engine.connect() as conn:
-        # Check if father_name exists in Employees
+        # Check columns in Employees
         employees_columns = [col['name'] for col in inspector.get_columns("Employees")]
+
+        # Add zk_id if missing
+        if "zk_id" not in employees_columns:
+            try:
+                print("⚠️  Adding zk_id to Employees...")
+                # use double quotes for table name and single for values to be safe in PSQL
+                conn.execute(text('ALTER TABLE "Employees" ADD COLUMN zk_id VARCHAR(255)'))
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+                print(f"Migration Error (zk_id): {e}")
+
+        # Check if father_name exists in Employees
         if "father_name" not in employees_columns:
             try:
                 conn.execute(text("ALTER TABLE \"Employees\" ADD COLUMN father_name VARCHAR DEFAULT '-'"))
