@@ -79,6 +79,7 @@ class Ledger(Base):
 class Employee(Base):
     __tablename__ = "Employees"
     id = Column(Integer, primary_key=True, index=True)
+    zkteco_id = Column(Integer, nullable=True, unique=True)  # ZKTeco ID Number
     full_name = Column(String, nullable=False)
     father_name = Column(String, nullable=True, default="-")  # ولد
     province = Column(String, nullable=True, default="-")  # ولایت
@@ -88,6 +89,16 @@ class Employee(Base):
     hire_date = Column(Date, default=datetime.date.today)  # تاریخ ثبت نام
     createdAt = Column(DateTime, default=datetime.datetime.utcnow)
     updatedAt = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
+
+class SalaryAdvance(Base):
+    __tablename__ = "SalaryAdvances"
+    id = Column(Integer, primary_key=True, index=True)
+    amount = Column(Float, nullable=False)
+    date = Column(Date, default=datetime.date.today)
+    description = Column(String, nullable=True)
+    EmployeeId = Column(Integer, ForeignKey("Employees.id"))
+    createdAt = Column(DateTime, default=datetime.datetime.utcnow)
 
 
 class Production(Base):
@@ -142,6 +153,7 @@ class Attendance(Base):
     date = Column(String, nullable=False)
     check_in = Column(String, nullable=True)  # Added for ZKTeco entry time
     check_out = Column(String, nullable=True)  # Added for ZKTeco exit time
+    deduction_amount = Column(Float, default=0)  # مبلغ کسر معاش در روز
     EmployeeId = Column(Integer, ForeignKey("Employees.id"))
     createdAt = Column(DateTime, default=datetime.datetime.utcnow)
     updatedAt = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
@@ -417,6 +429,13 @@ class EmployeeCreate(BaseModel):
     position: str
     salary: float
     phone: Optional[str] = None
+    zkteco_id: Optional[int] = None
+
+
+class SalaryAdvanceCreate(BaseModel):
+    amount: float
+    date: str
+    description: Optional[str] = None
 
 
 class ProductionCreate(BaseModel):
@@ -717,10 +736,15 @@ def sync_zkteco(req: SyncRequest = None, db: Session = Depends(get_db)):
         print(f"Daily records mapped for employee IDs: {list(daily_records.keys())}")
 
         for emp_id, dates in daily_records.items():
-            emp = db.query(Employee).filter(Employee.id == emp_id).first()
+            emp = db.query(Employee).filter((Employee.zkteco_id == emp_id) | (Employee.id == emp_id)).first()
             if not emp:
-                print(f"Warning: Employee with ID {emp_id} not found in DB but exists in ZKTeco logs.")
+                print(f"Warning: Employee with ZKTeco ID {emp_id} not found in DB.")
                 continue
+
+            # Daily salary = salary / 30
+            # Hourly salary = Daily salary / 11 (6 AM to 5 PM is 11 hours)
+            daily_salary = emp.salary / 30.0 if emp.salary else 0
+            hourly_salary = daily_salary / 11.0
 
             for date_str, timestamps in dates.items():
                 timestamps.sort()
@@ -731,12 +755,39 @@ def sync_zkteco(req: SyncRequest = None, db: Session = Depends(get_db)):
                 check_in_str = check_in_dt.strftime("%I:%M %p")
                 check_out_str = check_out_dt.strftime("%I:%M %p") if check_out_dt else None
 
+                # Check lateness based on 6:00 AM shift start
                 status = "PRESENT"
-                if check_in_dt.hour > 8 or (check_in_dt.hour == 8 and check_in_dt.minute > 15):
-                    status = "LATE"
+                deduction = 0.0
+                late_hours = 0.0
+
+                start_shift_time = check_in_dt.replace(hour=6, minute=0, second=0)
+                end_shift_time = check_in_dt.replace(hour=17, minute=0, second=0)
+
+                if check_in_dt > start_shift_time:
+                    diff = check_in_dt - start_shift_time
+                    minutes_late = diff.total_seconds() / 60
+                    if minutes_late > 30:  # 30 min grace period
+                        status = "LATE"
+                        late_hours += minutes_late / 60.0
+
+                if check_out_dt and check_out_dt < end_shift_time:
+                    diff2 = end_shift_time - check_out_dt
+                    minutes_early = diff2.total_seconds() / 60
+                    late_hours += minutes_early / 60.0
+                elif not check_out_dt:
+                    # No check out yet! But maybe they just arrived.
+                    # We should check if it's the end of day before deducting.
+                    # If this is past dates, then penalize
+                    if (datetime.datetime.now() - check_in_dt).days > 0:
+                        # missed checking out yesterday
+                        diff2 = end_shift_time - check_in_dt  # Only checked in
+                        minutes_early = max(0, diff2.total_seconds() / 60)
+                        late_hours += minutes_early / 60.0
+
+                deduction = late_hours * hourly_salary
 
                 db_att = db.query(Attendance).filter(
-                    Attendance.EmployeeId == emp_id,
+                    Attendance.EmployeeId == emp.id,
                     Attendance.date == date_str
                 ).first()
 
@@ -753,15 +804,20 @@ def sync_zkteco(req: SyncRequest = None, db: Session = Depends(get_db)):
                         db_att.status = status
                         updated = True
 
+                    if deduction > 0 and db_att.deduction_amount != deduction:
+                        db_att.deduction_amount = deduction
+                        updated = True
+
                     if updated:
                         records_updated += 1
                 else:
                     new_att = Attendance(
-                        EmployeeId=emp_id,
+                        EmployeeId=emp.id,
                         date=date_str,
                         check_in=check_in_str,
                         check_out=check_out_str,
-                        status=status
+                        status=status,
+                        deduction_amount=deduction
                     )
                     db.add(new_att)
                     records_added += 1
@@ -795,15 +851,19 @@ def export_attendance_report(month: str = "current", db: Session = Depends(get_d
         # Generate mapping row
         data.append({
             "ID کارمند": emp.id,
+            "ID دستگاه حاضری": emp.zkteco_id or "ثبت نشده",
             "نام سیستم": emp.full_name,
             "ولد": emp.father_name or "-",
             "ولایت": emp.province or "-",
             "وظیفه": emp.position,
+            "معاش ماهانه": emp.salary,
             "تاریخ استخدام": emp.hire_date,
             "تاریخ حاضری": att.date,
             "ساعت ورود": att.check_in or "---",
             "ساعت خروج": att.check_out or "---",
-            "وضعیت": att.status
+            "وضعیت": att.status,
+            "مبلغ کسر (AFN)": att.deduction_amount if att.deduction_amount else 0
+
         })
 
     df = pd.DataFrame(data)
@@ -811,23 +871,59 @@ def export_attendance_report(month: str = "current", db: Session = Depends(get_d
     # ADVANCED REPORT REQUIREMENT: Grouping logically by Employee, then sorted by Date
     df = df.sort_values(by=["نام سیستم", "تاریخ حاضری"])
 
+    # Fetch all advances for this month
+    advances_data = db.query(SalaryAdvance, Employee).join(Employee, SalaryAdvance.EmployeeId == Employee.id).all()
+
+    summary_data = {}
+    for att, emp in attendances:
+        if emp.id not in summary_data:
+            summary_data[emp.id] = {
+                "ID": emp.id,
+                "ZKTeco ID": emp.zkteco_id or "-",
+                "نام سیستم": emp.full_name,
+                "معاش ماهانه": float(emp.salary),
+                "تعداد روزهای حاضر": 0,
+                "تعداد روزهای غایب": 0,
+                "مجموع کسر از بابت تاخیر/غیابت": 0.0,
+                "مجموع مساعده گرفته شده": 0.0,
+            }
+
+        if att.status in ["PRESENT", "LATE"]:
+            summary_data[emp.id]["تعداد روزهای حاضر"] += 1
+        elif att.status == "ABSENT":
+            summary_data[emp.id]["تعداد روزهای غایب"] += 1
+
+        summary_data[emp.id]["مجموع کسر از بابت تاخیر/غیابت"] += float(att.deduction_amount or 0)
+
+    for adv, emp in advances_data:
+        if emp.id in summary_data:
+            summary_data[emp.id]["مجموع مساعده گرفته شده"] += float(adv.amount)
+
+    for sid, sdata in summary_data.items():
+        sdata["قابض (باقیمانده معاش)"] = sdata["معاش ماهانه"] - sdata["مجموع کسر از بابت تاخیر/غیابت"] - sdata[
+            "مجموع مساعده گرفته شده"]
+
+    df_summary = pd.DataFrame(list(summary_data.values()))
+
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df_summary.to_excel(writer, index=False, sheet_name="خلاصه معاشات", freeze_panes=(1, 0))
         df.to_excel(writer, index=False, sheet_name="راپور حاضری", freeze_panes=(1, 0))
 
         # Apply strict column widths to make it highly organized
-        worksheet = writer.sheets["راپور حاضری"]
-        for col in worksheet.columns:
-            max_length = 0
-            column = col[0].column_letter
-            for cell in col:
-                try:
-                    if len(str(cell.value)) > max_length:
-                        max_length = len(str(cell.value))
-                except:
-                    pass
-            adjusted_width = (max_length + 2)
-            worksheet.column_dimensions[column].width = adjusted_width
+        for sheet_name in ["خلاصه معاشات", "راپور حاضری"]:
+            worksheet = writer.sheets[sheet_name]
+            for col in worksheet.columns:
+                max_length = 0
+                column = col[0].column_letter
+                for cell in col:
+                    try:
+                        if len(str(cell.value)) > max_length:
+                            max_length = len(str(cell.value))
+                    except:
+                        pass
+                adjusted_width = (max_length + 2)
+                worksheet.column_dimensions[column].width = adjusted_width
 
     output.seek(0)
 
@@ -953,6 +1049,29 @@ def delete_employee(emp_id: int, db: Session = Depends(get_db)):
     db.delete(emp)
     db.commit()
     return {"success": True, "message": "Employee deleted"}
+
+
+@app.post("/api/employees/{emp_id}/advances")
+def create_salary_advance(emp_id: int, advance: SalaryAdvanceCreate, db: Session = Depends(get_db)):
+    emp = db.query(Employee).filter(Employee.id == emp_id).first()
+    if not emp:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    db_adv = SalaryAdvance(
+        EmployeeId=emp_id,
+        amount=advance.amount,
+        date=advance.date,
+        description=advance.description
+    )
+    db.add(db_adv)
+    db.commit()
+    db.refresh(db_adv)
+    return db_adv
+
+
+@app.get("/api/employees/{emp_id}/advances")
+def get_salary_advances(emp_id: int, db: Session = Depends(get_db)):
+    return db.query(SalaryAdvance).filter(SalaryAdvance.EmployeeId == emp_id).order_by(SalaryAdvance.date.desc()).all()
 
 
 # --- Production (تولیدات) ---

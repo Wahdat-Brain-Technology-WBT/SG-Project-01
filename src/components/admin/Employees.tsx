@@ -43,6 +43,11 @@ export default function Employees({
   const [isSyncing, setIsSyncing] = useState(false);
   const [toast, setToast] = useState<{message: string, type: 'success'|'error'} | null>(null);
 
+  const [selectedEmpForSalary, setSelectedEmpForSalary] = useState<any>(null);
+  const [advanceAmount, setAdvanceAmount] = useState('');
+  const [advanceDesc, setAdvanceDesc] = useState('');
+  const [isSavingAdvance, setIsSavingAdvance] = useState(false);
+
   // A safer todayStr that respects the user's local timezone (Kabul time)
   const today = new Date();
   const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
@@ -72,15 +77,47 @@ export default function Employees({
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || data.error || 'خطا در ارتباط با دستگاه');
 
-      setToast({ message: data.message || 'همگام‌سازی ZKTeco با موفقیت انجام شد.', type: 'success' });
-
-      // Attempt to trigger a reload/mutate globally if user is using SWR or window.location
-      setTimeout(() => window.location.reload(), 2000);
+      setToast({ message: data.message || 'اعلومات دستگاه موفقانه همگام‌سازی شد.', type: 'success' });
+      await onQuickAttendance(); // Ensure onQuickAttendance is called correctly
     } catch (err: any) {
-      setToast({ message: err.message || 'خطا در برقراری ارتباط با ZKTeco.', type: 'error' });
+      setToast({ message: err.message || 'ارتباط با دستگاه قطع شده است.', type: 'error' });
       setTimeout(() => setToast(null), 4000);
     } finally {
       setIsSyncing(false);
+    }
+  };
+
+  const handleSaveAdvance = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedEmpForSalary || !advanceAmount) return;
+
+    setIsSavingAdvance(true);
+    try {
+      const amt = parseFloat(toEnglishDigits(advanceAmount));
+      const res = await fetch(`${API_URL}/api/employees/${selectedEmpForSalary.id}/advances`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('admin_token') || ''}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          amount: amt,
+          date: todayStr,
+          description: advanceDesc || 'مساعده (پیشکی)'
+        })
+      });
+
+      if (!res.ok) throw new Error('خطا در ثبت مساعده');
+
+      setToast({ message: 'مساعده موفقانه ثبت شد.', type: 'success' });
+      setSelectedEmpForSalary(null);
+      setAdvanceAmount('');
+      setAdvanceDesc('');
+      await onQuickAttendance(); // Refresh table
+    } catch (err: any) {
+      setToast({ message: err.message || 'خطا', type: 'error' });
+    } finally {
+      setIsSavingAdvance(false);
     }
   };
 
@@ -248,6 +285,7 @@ export default function Employees({
                           </div>
                           <span className="text-[11px] font-mono text-gray-500">
                             ID: <span className="text-blue-500 font-bold">{formatNumber(e.id)}</span>
+                            {e.zkteco_id ? ` | ZK: ${formatNumber(e.zkteco_id)}` : ''}
                           </span>
                         </div>
                       </td>
@@ -316,9 +354,13 @@ export default function Employees({
                           <button onClick={() => onDeleteEmployee(e.id)} className="text-[12px] font-black text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-500/10 px-3 py-1.5 rounded-lg border border-red-500/20 hover:bg-red-500 hover:text-white transition-colors" dir="ltr" title="حذف کارمند">
                             حذف
                           </button>
+                          <button onClick={() => setSelectedEmpForSalary(e)} className="text-[12px] font-black text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 px-3 py-1.5 rounded-lg border border-emerald-500/20 hover:bg-emerald-500 hover:text-white transition-colors flex items-center gap-1" dir="ltr">
+                            <Wallet size={14}/> حساب/مساعده
+                          </button>
                           <button className="text-[12px] font-black text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-500/10 px-3 py-1.5 rounded-lg border border-blue-500/20 hover:bg-blue-500 hover:text-white transition-colors" dir="ltr">
                             {formatNumber(e.salary)} AFN
                           </button>
+
                           <button className="p-2 text-gray-400 hover:text-blue-500 bg-gray-50 dark:bg-slate-800 rounded-xl transition-all border border-transparent hover:border-blue-500/30">
                             <MoreVertical size={16} />
                           </button>
@@ -332,6 +374,48 @@ export default function Employees({
           </table>
         </div>
       </div>
+
+      {selectedEmpForSalary && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+          <div className="bg-white dark:bg-slate-900 rounded-[28px] shadow-2xl w-full max-w-lg overflow-hidden border dark:border-slate-800 animate-in zoom-in duration-300">
+            <div className="flex justify-between items-center p-6 border-b dark:border-slate-800 bg-gray-50/50 dark:bg-slate-800/50">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-emerald-600 rounded-2xl flex items-center justify-center text-white shadow-xl shadow-emerald-600/30">
+                  <Wallet size={24} />
+                </div>
+                <div>
+                  <h3 className="font-black text-xl text-gray-800 dark:text-white">مدیریت مالی {selectedEmpForSalary.full_name}</h3>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 flex gap-2"><span>معاش اصلی: {formatNumber(selectedEmpForSalary.salary)} افغانی</span></p>
+                </div>
+              </div>
+              <button onClick={() => setSelectedEmpForSalary(null)} className="p-3 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-2xl transition-all text-gray-400 hover:text-red-500">
+                <Plus className="rotate-45" size={24} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveAdvance} className="p-6 space-y-5">
+              <div className="bg-emerald-50 dark:bg-emerald-900/10 p-4 rounded-xl border border-emerald-100 dark:border-emerald-900/30">
+                <h4 className="text-sm font-black text-emerald-800 dark:text-emerald-400 flex items-center gap-2 mb-2"><FileText size={16}/> ثبت مساعده (پیش پرداخت)</h4>
+                <div className="grid grid-cols-1 gap-4 mt-4">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">مبلغ پرداختی (افغانی)</label>
+                    <input required type="text" inputMode="decimal" value={advanceAmount} onChange={e => setAdvanceAmount(toEnglishDigits(e.target.value))} className="w-full border-2 border-white dark:border-slate-700 dark:bg-slate-800 dark:text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-emerald-500 transition-all font-black" placeholder="مثال: 1000"/>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">شرح (اختیاری)</label>
+                    <input type="text" value={advanceDesc} onChange={e => setAdvanceDesc(e.target.value)} className="w-full border-2 border-white dark:border-slate-700 dark:bg-slate-800 dark:text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-emerald-500 transition-all font-medium" placeholder="مثال: مساعده هفته اول"/>
+                  </div>
+                </div>
+              </div>
+
+              <button type="submit" disabled={isSavingAdvance} className="w-full bg-emerald-600 text-white font-black rounded-xl px-6 py-4 hover:bg-emerald-700 transition-all shadow-xl shadow-emerald-600/20 active:scale-95 disabled:opacity-50">
+                {isSavingAdvance ? 'در حال ثبت...' : 'ثبت مساعده'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

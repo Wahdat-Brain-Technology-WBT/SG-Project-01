@@ -266,7 +266,7 @@ export default function AdminPanel() {
   const [newProduct, setNewProduct] = useState({ name: '', category: '', size: '', qty_per_carton: '', current_price: '' });
 
   const [isAddEmployeeModalOpen, setIsAddEmployeeModalOpen] = useState(false);
-  const [newEmployee, setNewEmployee] = useState({ full_name: '', father_name: '', province: '', position: '', phone: '', salary: '' });
+  const [newEmployee, setNewEmployee] = useState({ full_name: '', father_name: '', province: '', position: '', phone: '', salary: '', zkteco_id: '' });
 
   const [isAddProductionModalOpen, setIsAddProductionModalOpen] = useState(false);
   const [newProduction, setNewProduction] = useState({ ProductId: '', quantity_produced: '', raw_material_used: '', department: 'PIPE' });
@@ -336,9 +336,13 @@ export default function AdminPanel() {
 
     setIsSaving(true);
     try {
+      let zktecoIdParsed: number | null = parseInt(toEnglishDigits(newEmployee.zkteco_id));
+      if (isNaN(zktecoIdParsed)) zktecoIdParsed = null;
+
       const payload = {
         ...newEmployee,
-        salary: salaryVal
+        salary: salaryVal,
+        zkteco_id: zktecoIdParsed
       };
 
       const res = await fetch(`${API_URL}/api/employees`, {
@@ -1209,9 +1213,15 @@ export default function AdminPanel() {
                 <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">{t.colPhone}</label>
                 <input type="text" value={newEmployee.phone} onChange={e => setNewEmployee({...newEmployee, phone: e.target.value})} className="w-full border dark:border-slate-700 dark:bg-slate-800 dark:text-white rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 outline-none" dir="ltr" />
               </div>
-              <div>
-                <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">{t.colSalary}</label>
-                <input required type="text" inputMode="decimal" value={newEmployee.salary} onChange={e => setNewEmployee({...newEmployee, salary: toEnglishDigits(e.target.value)})} className="w-full border dark:border-slate-700 dark:bg-slate-800 dark:text-white rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 outline-none" />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">{t.colSalary}</label>
+                  <input required type="text" inputMode="decimal" value={newEmployee.salary} onChange={e => setNewEmployee({...newEmployee, salary: toEnglishDigits(e.target.value)})} className="w-full border dark:border-slate-700 dark:bg-slate-800 dark:text-white rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 outline-none" />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">ID دستگاه حاضری (ZKTeco)</label>
+                  <input type="text" inputMode="numeric" value={newEmployee.zkteco_id} onChange={e => setNewEmployee({...newEmployee, zkteco_id: toEnglishDigits(e.target.value)})} placeholder="مثال: 2" className="w-full border dark:border-slate-700 dark:bg-slate-800 dark:text-white rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 outline-none" dir="ltr" />
+                </div>
               </div>
               <div className="pt-4">
                 <button type="submit" disabled={isSaving} className={`w-full text-white font-bold py-3 rounded-xl transition-all ${isSaving ? 'bg-gray-400 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700'}`}>
