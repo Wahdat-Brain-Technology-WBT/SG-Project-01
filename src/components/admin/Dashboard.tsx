@@ -34,6 +34,7 @@ export default function Dashboard({ theme, lang, t }: DashboardProps) {
   // 2. State for Live Exchange Rate & Interactive Chart
   const [exchangeRate, setExchangeRate] = useState<number>(71.5); // Default fallback
   const [selectedDay, setSelectedDay] = useState<any | null>(null);
+
   const [activeFinanceCard, setActiveFinanceCard] = useState<'INCOME' | 'EXPENSE' | 'PROFIT' | null>(null);
   const detailsRef = useRef<HTMLDivElement>(null);
 
@@ -155,7 +156,7 @@ export default function Dashboard({ theme, lang, t }: DashboardProps) {
 
       // RULE 1 & 6: English digits only for Jalali dates
       const fullJalaliDate = `${dayName}، ${dayNum} ${monthName} ${year}`;
-      const shortName = `${dayName} ${dayNum}`;
+      const shortName = `${dayName}، ${dayNum}`; // proper Persian comma for formatting
 
       return {
         name: shortName,
@@ -188,6 +189,13 @@ export default function Dashboard({ theme, lang, t }: DashboardProps) {
     // Do not reverse, keep order from Saturday to Friday
     return data;
   }, [ledger, lang]);
+
+  // Set default selectedDay to today (last item in chartData array) after chartData changes
+  useEffect(() => {
+    if (chartData && chartData.length > 0 && !selectedDay) {
+      setSelectedDay(chartData[6]);
+    }
+  }, [chartData]);
 
   // Filter exact transactions for the selected day (RULE 4)
   const selectedDayTransactions = useMemo(() => {
@@ -542,9 +550,17 @@ export default function Dashboard({ theme, lang, t }: DashboardProps) {
                   data={chartData}
                   margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
                   barCategoryGap="20%"
+                  className="cursor-pointer"
                   onClick={(state: any) => {
-                    if (state && state.activePayload && state.activePayload.length > 0) {
-                      setSelectedDay(state.activePayload[0].payload);
+                    if (state) {
+                      if (state.activePayload && state.activePayload.length > 0) {
+                        setSelectedDay(state.activePayload[0].payload);
+                      } else if (state.activeTooltipIndex !== undefined) {
+                        setSelectedDay(chartData[state.activeTooltipIndex]);
+                      } else if (state.activeLabel) {
+                        const day = chartData.find((d: any) => d.name === state.activeLabel);
+                        if (day) setSelectedDay(day);
+                      }
                     }
                   }}
                 >
@@ -563,7 +579,9 @@ export default function Dashboard({ theme, lang, t }: DashboardProps) {
                       dataKey="name"
                       axisLine={false}
                       tickLine={false}
-                      tick={{ fill: theme === 'dark' ? '#94a3b8' : '#64748b' }}
+                      interval={0}
+                      reversed={lang !== 'en'}
+                      tick={{ fill: theme === 'dark' ? '#94a3b8' : '#64748b', fontSize: 13, style: { direction: 'rtl' } }}
                       dy={10}
                     />
                     <YAxis
@@ -633,17 +651,17 @@ export default function Dashboard({ theme, lang, t }: DashboardProps) {
                    <div>
                      <h4 className="text-sm font-bold text-gray-800 dark:text-gray-200 mb-4 flex items-center justify-between">
                        {lang === 'en' ? 'Transaction Details' : 'جزئیات تراکنش‌ها'}
-                       <span className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 py-0.5 px-2 rounded-full text-xs">{selectedDay.transactions?.length || 0}</span>
+                       <span className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 py-0.5 px-2 rounded-full text-xs">{selectedDayTransactions.length}</span>
                      </h4>
 
                      <div className="space-y-3">
-                       {selectedDay.transactions?.length === 0 ? (
+                       {selectedDayTransactions.length === 0 ? (
                          <div className="text-center py-8 text-gray-400 dark:text-slate-500 border-2 border-dashed border-gray-100 dark:border-slate-800 rounded-xl">
                            <Activity className="mx-auto mb-2 opacity-50" size={24} />
                            {lang === 'en' ? 'No transactions recorded' : 'تراکنشی ثبت نشده است'}
                          </div>
                        ) : (
-                         selectedDay.transactions?.map((tx: any, idx: number) => (
+                         selectedDayTransactions.map((tx: any, idx: number) => (
                            <div key={idx} className="flex justify-between items-center p-3 hover:bg-gray-50 dark:hover:bg-slate-800/50 rounded-xl transition-colors border border-gray-100 dark:border-slate-800 group">
                              <div className="flex items-center gap-3">
                                <div className={`w-2 h-2 rounded-full ${tx.type === 'INCOME' ? 'bg-emerald-500' : 'bg-rose-500'}`}></div>

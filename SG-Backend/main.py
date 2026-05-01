@@ -202,7 +202,13 @@ def upgrade_database_schema(engine):
 upgrade_database_schema(engine)
 
 # ساخت تمام جداول در دیتابیس
-Base.metadata.create_all(bind=engine)
+try:
+    Base.metadata.create_all(bind=engine)
+except Exception as e:
+    print("\n" + "=" * 60)
+    print("❌ ERROR: Database Connection Failed!")
+    print("It seems PostgreSQL is not running or 'sheen_ghazy_erp' database does not exist.")
+    print("=" * 60 + "\n")
 
 
 def init_default_admin():
@@ -285,6 +291,21 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.on_event("startup")
+async def startup_event():
+    try:
+        # Try to connect to PostgreSQL to verify the connection string
+        db = SessionLocal()
+        db.execute(text("SELECT 1"))
+        db.close()
+        print("✅ SUCCESS: Connected to PostgreSQL database successfully!")
+    except Exception as e:
+        print(f"❌ ERROR: Could not connect to PostgreSQL database.")
+        print(f"❌ EXCEPTION DETALS: {str(e)}")
+        print("👉 Please make sure PostgreSQL is installed and the service is running.")
+        print("👉 Check that your username/password and 'sheen_ghazy_erp' database exist.")
 
 
 # سیستم مدیریت خطاهای هوشمند
@@ -1053,6 +1074,27 @@ def create_direct_sale(sale: DirectSaleCreate, db: Session = Depends(get_db)):
     db.commit()
     return {"success": True, "total_amount": total_amount}
 
+
+import os
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+
+if os.path.exists("dist") and os.path.isdir("dist"):
+    # Serve assets folder specifically
+    app.mount("/assets", StaticFiles(directory="dist/assets"), name="assets")
+
+
+    # Simple Fallback for React Router
+    @app.get("/{full_path:path}")
+    async def serve_frontend(full_path: str):
+        if full_path.startswith("api/"):
+            raise HTTPException(status_code=404, detail="API route not found")
+
+        file_path = os.path.join("dist", full_path)
+        if os.path.exists(file_path) and os.path.isfile(file_path):
+            return FileResponse(file_path)
+
+        return FileResponse("dist/index.html")
 
 if __name__ == "__main__":
     import uvicorn
