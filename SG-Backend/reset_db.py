@@ -5,15 +5,14 @@ from main import engine, Base
 
 def reset_database():
     with engine.connect() as conn:
-        print("Dropping all tables...")
-        # Since PostgreSQL has foreign key constraints, drop_all() can sometimes fail
-        # The fastest and cleanest way in Postgres is to drop the schema and recreate it
+        print("Dropping all tables and resetting schema...")
+        # چون PostgreSQL محدودیت روابط جدول‌ها را دارد، کل اسکیمای public را حذف و دوباره می‌سازیم
         conn.execute(text("DROP SCHEMA public CASCADE;"))
         conn.execute(text("CREATE SCHEMA public;"))
         conn.execute(text("GRANT ALL ON SCHEMA public TO public;"))
         conn.commit()
 
-        print("Recreating all tables...")
+        print("Recreating all tables with new columns...")
         Base.metadata.create_all(bind=engine)
         print("Database successfully reset!")
 

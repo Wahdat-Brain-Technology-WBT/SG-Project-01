@@ -1,24 +1,20 @@
 import os
-import datetime
-import io
-from collections import defaultdict
-from typing import List, Optional, Any
-
-from fastapi import FastAPI, Depends, HTTPException, Request, status
+from google import genai
+from google.genai import types
+from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
-from fastapi.security import OAuth2PasswordBearer
-from pydantic import BaseModel
-from sqlalchemy import create_engine, Column, Integer, String, Float, Text, DateTime, Date, ForeignKey, text, inspect
+from sqlalchemy import create_engine, Column, Integer, String, Float, Text, DateTime, Date, ForeignKey, text
 from sqlalchemy.orm import declarative_base, sessionmaker, Session, relationship
+from pydantic import BaseModel
+from typing import List, Optional, Any
+import datetime
+import io
+from collections import defaultdict
 from dotenv import load_dotenv
-from google import genai
-from google.genai import types
 
-load_dotenv()
-
-# ZKTeco and Pandas Imports
+# IoT & Reporting Modules
 try:
     from zk import ZK, const
 except ImportError:
@@ -28,6 +24,9 @@ try:
     import pandas as pd
 except ImportError:
     pd = None
+
+# بارگذاری متغیرهای محیطی
+load_dotenv()
 
 # تنظیمات دیتابیس PostgreSQL
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:123456@localhost:5432/sheen_ghazy_erp")
@@ -79,7 +78,6 @@ class Ledger(Base):
 class Employee(Base):
     __tablename__ = "Employees"
     id = Column(Integer, primary_key=True, index=True)
-    zkteco_id = Column(Integer, nullable=True, unique=True)  # ZKTeco ID Number
     full_name = Column(String, nullable=False)
     father_name = Column(String, nullable=True, default="-")  # ولد
     province = Column(String, nullable=True, default="-")  # ولایت
@@ -89,16 +87,6 @@ class Employee(Base):
     hire_date = Column(Date, default=datetime.date.today)  # تاریخ ثبت نام
     createdAt = Column(DateTime, default=datetime.datetime.utcnow)
     updatedAt = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
-
-
-class SalaryAdvance(Base):
-    __tablename__ = "SalaryAdvances"
-    id = Column(Integer, primary_key=True, index=True)
-    amount = Column(Float, nullable=False)
-    date = Column(Date, default=datetime.date.today)
-    description = Column(String, nullable=True)
-    EmployeeId = Column(Integer, ForeignKey("Employees.id"))
-    createdAt = Column(DateTime, default=datetime.datetime.utcnow)
 
 
 class Production(Base):
@@ -153,7 +141,6 @@ class Attendance(Base):
     date = Column(String, nullable=False)
     check_in = Column(String, nullable=True)  # Added for ZKTeco entry time
     check_out = Column(String, nullable=True)  # Added for ZKTeco exit time
-    deduction_amount = Column(Float, default=0)  # مبلغ کسر معاش در روز
     EmployeeId = Column(Integer, ForeignKey("Employees.id"))
     createdAt = Column(DateTime, default=datetime.datetime.utcnow)
     updatedAt = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
@@ -172,6 +159,8 @@ class User(Base):
 # ==========================================
 # Schema Migrations (به‌روزرسانی خودکار دیتابیس)
 # ==========================================
+from sqlalchemy import inspect
+
 
 def upgrade_database_schema(engine):
     """
@@ -196,14 +185,6 @@ def upgrade_database_schema(engine):
                 conn.rollback()
                 print(f"Migration Notice (Employees): {str(e)}")
 
-        if "zkteco_id" not in employees_columns:
-            try:
-                conn.execute(text("ALTER TABLE \"Employees\" ADD COLUMN zkteco_id INTEGER UNIQUE"))
-                conn.commit()
-            except Exception as e:
-                conn.rollback()
-                print(f"Migration Notice (zkteco_id): {str(e)}")
-
         # Check if check_in exists in Attendances
         if inspector.has_table("Attendances"):
             attendances_columns = [col['name'] for col in inspector.get_columns("Attendances")]
@@ -216,26 +197,12 @@ def upgrade_database_schema(engine):
                     conn.rollback()
                     print(f"Migration Notice (Attendances): {str(e)}")
 
-            if "deduction_amount" not in attendances_columns:
-                try:
-                    conn.execute(text("ALTER TABLE \"Attendances\" ADD COLUMN deduction_amount FLOAT DEFAULT 0.0"))
-                    conn.commit()
-                except Exception as e:
-                    conn.rollback()
-                    print(f"Migration Notice (deduction_amount): {str(e)}")
-
 
 # اجرای مایگریشن‌ها قبل از ایجاد جداول
-print("--- Checking Database Connection & Running Migrations ---")
-try:
-    with engine.connect() as conn:
-        print("--- Database connection SUCCESSFUL! ---")
-    upgrade_database_schema(engine)
-    # ساخت تمام جداول در دیتابیس
-    Base.metadata.create_all(bind=engine)
-except Exception as e:
-    print(
-        f"\n!!!! DATABASE CONNECTION ERROR !!!!\nخطا در اتصال به دیتابیس PostgreSQL: {str(e)}\nلطفاً مطمئن شوید که سرویس PostgreSQL روشن است و نام کاربری/رمز عبور صحیح است.\n")
+upgrade_database_schema(engine)
+
+# ساخت تمام جداول در دیتابیس
+Base.metadata.create_all(bind=engine)
 
 
 def init_default_admin():
@@ -451,13 +418,6 @@ class EmployeeCreate(BaseModel):
     position: str
     salary: float
     phone: Optional[str] = None
-    zkteco_id: Optional[int] = None
-
-
-class SalaryAdvanceCreate(BaseModel):
-    amount: float
-    date: str
-    description: Optional[str] = None
 
 
 class ProductionCreate(BaseModel):
@@ -558,6 +518,9 @@ async def chat_endpoint(request: ChatRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+from fastapi.security import OAuth2PasswordBearer
+from fastapi import status
+
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
 
@@ -639,9 +602,96 @@ def delete_product(id: int, db: Session = Depends(get_db)):
     db_product = db.query(Product).filter(Product.id == id).first()
     if not db_product:
         raise HTTPException(status_code=404, detail="محصول یافت نشد")
+
+    # Handle foreign keys (Production and OrderItems)
+    db.query(Production).filter(Production.ProductId == id).delete(synchronize_session=False)
+    db.query(OrderItem).filter(OrderItem.ProductId == id).delete(synchronize_session=False)
+
     db.delete(db_product)
     db.commit()
     return {"message": "محصول با موفقیت حذف شد"}
+
+
+class DirectSaleCreate(BaseModel):
+    CustomerId: Optional[int] = None
+    customer_name: Optional[str] = None
+    items: List[DirectSaleItem]
+
+
+@app.post("/api/orders/direct")
+def create_direct_sale(sale: DirectSaleCreate, db: Session = Depends(get_db)):
+    total_amount = 0
+    items_out = []
+
+    # 1. Handle Customer
+    customer = None
+    if sale.CustomerId:
+        customer = db.query(Customer).filter(Customer.id == sale.CustomerId).first()
+    if not customer and sale.customer_name:
+        customer = db.query(Customer).filter(Customer.whatsapp_number == sale.customer_name).first()
+        if not customer:
+            customer = Customer(full_name=sale.customer_name, whatsapp_number="مشتری مرکزی: " + sale.customer_name)
+            db.add(customer)
+            db.commit()
+            db.refresh(customer)
+
+    if not customer:
+        raise HTTPException(status_code=400, detail="مشتری مشخص نشده است")
+
+    # 2. Create Order
+    new_order = Order(CustomerId=customer.id, status='COMPLETED')
+    db.add(new_order)
+    db.commit()
+    db.refresh(new_order)
+
+    # 3. Handle Items
+    for item in sale.items:
+        product = db.query(Product).filter(Product.id == item.ProductId).first()
+        if not product or product.stock_quantity < item.quantity:
+            raise HTTPException(status_code=400, detail=f"موجودی ناکافی برای محصول ID: {item.ProductId}")
+
+        product.stock_quantity -= item.quantity
+        total_amount += item.unit_price * item.quantity
+
+        order_item = OrderItem(
+            OrderId=new_order.id,
+            ProductId=product.id,
+            quantity=item.quantity,
+            unit_price=item.unit_price
+        )
+        db.add(order_item)
+
+        items_out.append({
+            "product_name": product.name,
+            "size": product.size,
+            "quantity": item.quantity,
+            "unit_price": item.unit_price,
+            "total": item.unit_price * item.quantity
+        })
+
+    new_order.total_amount = total_amount
+
+    # 4. Handle Ledger
+    db_ledger = Ledger(
+        type="INCOME",
+        amount=total_amount,
+        description=f"فروش مستقیم (فاکتور #{new_order.id}) - مشتری: {customer.full_name}",
+        department="GENERAL",
+        order_id=new_order.id
+    )
+    db.add(db_ledger)
+    db.commit()
+
+    return {
+        "success": True,
+        "order": {
+            "id": new_order.id,
+            "date": new_order.createdAt.isoformat(),
+            "customer_name": customer.full_name,
+            "total_amount": total_amount,
+            "items": items_out
+        }
+    }
 
 
 @app.get("/api/orders")
@@ -712,148 +762,74 @@ def quick_attendance(req: QuickAttendanceCreate, db: Session = Depends(get_db)):
 
 
 class SyncRequest(BaseModel):
-    device_ip: str = "192.168.50.200"
+    device_ip: str = "192.168.1.201"
 
 
 @app.post("/api/attendance/sync")
 def sync_zkteco(req: SyncRequest = None, db: Session = Depends(get_db)):
     """
-    Connect to ZKTeco K70 device to fetch attendance records
+    MOCKED ZKTECO ENDPOINT (Hardware not yet available).
+    Simulates successful connection and injects fake attendance records.
     """
-    device_ip = req.device_ip if req and req.device_ip else "192.168.50.200"
-
-    zk_client = ZK(device_ip, port=4370, timeout=10, password=0, force_udp=False, ommit_ping=False)
-
     try:
-        conn = zk_client.connect()
-        conn.disable_device()  # قفل دستگاه در حین دانلود اطلاعات
+        # Simulate network latency
+        import time
+        time.sleep(1.5)
 
-        attendances = conn.get_attendance()  # دریافت لاگ‌ها
+        # Ensure we have at least one employee in the database
+        employees = db.query(Employee).limit(3).all()
+        if not employees:
+            return {
+                "success": False,
+                "message": "هیچ کارمندی برای ثبت حاضری آزمایشی یافت نشد. لطفاً یک کارمند ثبت کنید."
+            }
 
-        conn.enable_device()
-        conn.disconnect()
+        today_str = datetime.datetime.now().strftime("%Y-%m-%d")
 
-        print(f"Total attendance records fetched: {len(attendances) if attendances else 0}")
-
-        if not attendances:
-            return {"success": True, "message": "هیچ رکورد حاضری در دستگاه یافت نشد.", "records_added": 0}
+        # Fake punch data matching your requirements
+        mock_punches = [
+            {"check_in": "07:45 AM", "check_out": "05:00 PM", "status": "PRESENT"},
+            {"check_in": "08:15 AM", "check_out": "05:10 PM", "status": "LATE"},
+            {"check_in": "07:50 AM", "check_out": "04:00 PM", "status": "PRESENT"}
+        ]
 
         records_added = 0
-        records_updated = 0
+        for idx, emp in enumerate(employees):
+            # Select mock data for this user
+            mock_data = mock_punches[idx % len(mock_punches)]
 
-        daily_records = defaultdict(lambda: defaultdict(list))
+            db_att = db.query(Attendance).filter(
+                Attendance.EmployeeId == emp.id,
+                Attendance.date == today_str
+            ).first()
 
-        for att in attendances:
-            try:
-                # Strip spaces and null bytes which sometimes come from ZKTeco
-                cleaned_user_id = str(att.user_id).strip('\x00').strip()
-                emp_id = int(cleaned_user_id)
-            except ValueError:
-                print(f"Warning: Could not parse ZKTeco user_id '{att.user_id}' as int.")
-                continue
+            if db_att:
+                db_att.check_in = mock_data["check_in"]
+                db_att.check_out = mock_data["check_out"]
+                db_att.status = mock_data["status"]
+            else:
+                new_att = Attendance(
+                    EmployeeId=emp.id,
+                    date=today_str,
+                    check_in=mock_data["check_in"],
+                    check_out=mock_data["check_out"],
+                    status=mock_data["status"]
+                )
+                db.add(new_att)
 
-            date_str = att.timestamp.strftime("%Y-%m-%d")
-            daily_records[emp_id][date_str].append(att.timestamp)
-
-        print(f"Daily records mapped for employee IDs: {list(daily_records.keys())}")
-
-        for emp_id, dates in daily_records.items():
-            emp = db.query(Employee).filter((Employee.zkteco_id == emp_id) | (Employee.id == emp_id)).first()
-            if not emp:
-                print(f"Warning: Employee with ZKTeco ID {emp_id} not found in DB.")
-                continue
-
-            # Daily salary = salary / 30
-            # Hourly salary = Daily salary / 11 (6 AM to 5 PM is 11 hours)
-            daily_salary = emp.salary / 30.0 if emp.salary else 0
-            hourly_salary = daily_salary / 11.0
-
-            for date_str, timestamps in dates.items():
-                timestamps.sort()
-
-                check_in_dt = timestamps[0]
-                check_out_dt = timestamps[-1] if len(timestamps) > 1 else None
-
-                check_in_str = check_in_dt.strftime("%I:%M %p")
-                check_out_str = check_out_dt.strftime("%I:%M %p") if check_out_dt else None
-
-                # Check lateness based on 6:00 AM shift start
-                status = "PRESENT"
-                deduction = 0.0
-                late_hours = 0.0
-
-                start_shift_time = check_in_dt.replace(hour=6, minute=0, second=0)
-                end_shift_time = check_in_dt.replace(hour=17, minute=0, second=0)
-
-                if check_in_dt > start_shift_time:
-                    diff = check_in_dt - start_shift_time
-                    minutes_late = diff.total_seconds() / 60
-                    if minutes_late > 30:  # 30 min grace period
-                        status = "LATE"
-                        late_hours += minutes_late / 60.0
-
-                if check_out_dt and check_out_dt < end_shift_time:
-                    diff2 = end_shift_time - check_out_dt
-                    minutes_early = diff2.total_seconds() / 60
-                    late_hours += minutes_early / 60.0
-                elif not check_out_dt:
-                    # No check out yet! But maybe they just arrived.
-                    # We should check if it's the end of day before deducting.
-                    # If this is past dates, then penalize
-                    if (datetime.datetime.now() - check_in_dt).days > 0:
-                        # missed checking out yesterday
-                        diff2 = end_shift_time - check_in_dt  # Only checked in
-                        minutes_early = max(0, diff2.total_seconds() / 60)
-                        late_hours += minutes_early / 60.0
-
-                deduction = late_hours * hourly_salary
-
-                db_att = db.query(Attendance).filter(
-                    Attendance.EmployeeId == emp.id,
-                    Attendance.date == date_str
-                ).first()
-
-                if db_att:
-                    updated = False
-                    if not db_att.check_in or db_att.check_in != check_in_str:
-                        db_att.check_in = check_in_str
-                        updated = True
-                    if check_out_str and (not db_att.check_out or db_att.check_out != check_out_str):
-                        db_att.check_out = check_out_str
-                        updated = True
-
-                    if db_att.status in ["ABSENT", "PRESENT"] and status == "LATE":
-                        db_att.status = status
-                        updated = True
-
-                    if deduction > 0 and db_att.deduction_amount != deduction:
-                        db_att.deduction_amount = deduction
-                        updated = True
-
-                    if updated:
-                        records_updated += 1
-                else:
-                    new_att = Attendance(
-                        EmployeeId=emp.id,
-                        date=date_str,
-                        check_in=check_in_str,
-                        check_out=check_out_str,
-                        status=status,
-                        deduction_amount=deduction
-                    )
-                    db.add(new_att)
-                    records_added += 1
+            records_added += 1
 
         db.commit()
 
-        msg = f"همگام‌سازی با موفقیت انجام شد. ({records_added} ورودی جدید، {records_updated} بروزرسانی)"
-        if records_added == 0 and records_updated == 0:
-            return {"success": True, "message": "عملیات موفق اما اطلاعات جدیدی یافت نشد."}
-        return {"success": True, "message": msg, "records_added": records_added}
+        return {
+            "success": True,
+            "message": "همگامسازی (آزمایشی) با موفقیت انجام شد",
+            "records_added": records_added
+        }
 
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=400, detail=f"ارتباط با دستگاه ناموفق بود: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"خطای سرور در همگام‌سازی آزمایشی: {str(e)}")
 
 
 @app.get("/api/attendance/report")
@@ -873,79 +849,39 @@ def export_attendance_report(month: str = "current", db: Session = Depends(get_d
         # Generate mapping row
         data.append({
             "ID کارمند": emp.id,
-            "ID دستگاه حاضری": emp.zkteco_id or "ثبت نشده",
             "نام سیستم": emp.full_name,
             "ولد": emp.father_name or "-",
             "ولایت": emp.province or "-",
             "وظیفه": emp.position,
-            "معاش ماهانه": emp.salary,
             "تاریخ استخدام": emp.hire_date,
             "تاریخ حاضری": att.date,
             "ساعت ورود": att.check_in or "---",
             "ساعت خروج": att.check_out or "---",
-            "وضعیت": att.status,
-            "مبلغ کسر (AFN)": att.deduction_amount if att.deduction_amount else 0
-
+            "وضعیت": att.status
         })
 
     df = pd.DataFrame(data)
 
     # ADVANCED REPORT REQUIREMENT: Grouping logically by Employee, then sorted by Date
-    df = df.sort_values(by=["نام سیستم", "تاریخ حاضری"])
-
-    # Fetch all advances for this month
-    advances_data = db.query(SalaryAdvance, Employee).join(Employee, SalaryAdvance.EmployeeId == Employee.id).all()
-
-    summary_data = {}
-    for att, emp in attendances:
-        if emp.id not in summary_data:
-            summary_data[emp.id] = {
-                "ID": emp.id,
-                "ZKTeco ID": emp.zkteco_id or "-",
-                "نام سیستم": emp.full_name,
-                "معاش ماهانه": float(emp.salary),
-                "تعداد روزهای حاضر": 0,
-                "تعداد روزهای غایب": 0,
-                "مجموع کسر از بابت تاخیر/غیابت": 0.0,
-                "مجموع مساعده گرفته شده": 0.0,
-            }
-
-        if att.status in ["PRESENT", "LATE"]:
-            summary_data[emp.id]["تعداد روزهای حاضر"] += 1
-        elif att.status == "ABSENT":
-            summary_data[emp.id]["تعداد روزهای غایب"] += 1
-
-        summary_data[emp.id]["مجموع کسر از بابت تاخیر/غیابت"] += float(att.deduction_amount or 0)
-
-    for adv, emp in advances_data:
-        if emp.id in summary_data:
-            summary_data[emp.id]["مجموع مساعده گرفته شده"] += float(adv.amount)
-
-    for sid, sdata in summary_data.items():
-        sdata["قابض (باقیمانده معاش)"] = sdata["معاش ماهانه"] - sdata["مجموع کسر از بابت تاخیر/غیابت"] - sdata[
-            "مجموع مساعده گرفته شده"]
-
-    df_summary = pd.DataFrame(list(summary_data.values()))
+    df = df.sort_values(by=["نام کامل", "تاریخ"])
 
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df_summary.to_excel(writer, index=False, sheet_name="خلاصه معاشات", freeze_panes=(1, 0))
         df.to_excel(writer, index=False, sheet_name="راپور حاضری", freeze_panes=(1, 0))
 
         # Apply strict column widths to make it highly organized
-        for sheet_name in ["خلاصه معاشات", "راپور حاضری"]:
-            worksheet = writer.sheets[sheet_name]
-            for col in worksheet.columns:
-                max_length = 0
-                column = col[0].column_letter
-                for cell in col:
-                    try:
-                        if len(str(cell.value)) > max_length:
-                            max_length = len(str(cell.value))
-                    except:
-                        pass
-                adjusted_width = (max_length + 2)
-                worksheet.column_dimensions[column].width = adjusted_width
+        worksheet = writer.sheets["راپور حاضری"]
+        for col in worksheet.columns:
+            max_length = 0
+            column = col[0].column_letter
+            for cell in col:
+                try:
+                    if len(str(cell.value)) > max_length:
+                        max_length = len(str(cell.value))
+                except:
+                    pass
+            adjusted_width = (max_length + 2)
+            worksheet.column_dimensions[column].width = adjusted_width
 
     output.seek(0)
 
@@ -1052,56 +988,11 @@ def get_employees(db: Session = Depends(get_db)):
 
 @app.post("/api/employees")
 def create_employee(emp: EmployeeCreate, db: Session = Depends(get_db)):
-    print(f"--- Reached create_employee with data: {emp.model_dump()} ---")
-    try:
-        db_emp = Employee(**emp.model_dump(exclude_unset=True))
-        db.add(db_emp)
-        db.commit()
-        db.refresh(db_emp)
-        print(f"--- Successfully created employee with ID: {db_emp.id} ---")
-        return db_emp
-    except Exception as e:
-        db.rollback()
-        print(f"--- Error creating employee: {str(e)} ---")
-        raise HTTPException(status_code=400,
-                            detail=f"خطا در ذخیره اطلاعات (شاید ID دستگاه حاضری یا نام تکراری باشد): {str(e)}")
-
-
-@app.delete("/api/employees/{emp_id}")
-def delete_employee(emp_id: int, db: Session = Depends(get_db)):
-    emp = db.query(Employee).filter(Employee.id == emp_id).first()
-    if not emp:
-        raise HTTPException(status_code=404, detail="Employee not found")
-
-    # Delete associated records FIRST to avoid foreign key constraints
-    db.query(Attendance).filter(Attendance.EmployeeId == emp_id).delete()
-
-    db.delete(emp)
+    db_emp = Employee(**emp.model_dump(exclude_unset=True))
+    db.add(db_emp)
     db.commit()
-    return {"success": True, "message": "Employee deleted"}
-
-
-@app.post("/api/employees/{emp_id}/advances")
-def create_salary_advance(emp_id: int, advance: SalaryAdvanceCreate, db: Session = Depends(get_db)):
-    emp = db.query(Employee).filter(Employee.id == emp_id).first()
-    if not emp:
-        raise HTTPException(status_code=404, detail="Employee not found")
-
-    db_adv = SalaryAdvance(
-        EmployeeId=emp_id,
-        amount=advance.amount,
-        date=advance.date,
-        description=advance.description
-    )
-    db.add(db_adv)
-    db.commit()
-    db.refresh(db_adv)
-    return db_adv
-
-
-@app.get("/api/employees/{emp_id}/advances")
-def get_salary_advances(emp_id: int, db: Session = Depends(get_db)):
-    return db.query(SalaryAdvance).filter(SalaryAdvance.EmployeeId == emp_id).order_by(SalaryAdvance.date.desc()).all()
+    db.refresh(db_emp)
+    return db_emp
 
 
 # --- Production (تولیدات) ---
@@ -1161,3 +1052,9 @@ def create_direct_sale(sale: DirectSaleCreate, db: Session = Depends(get_db)):
 
     db.commit()
     return {"success": True, "total_amount": total_amount}
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
