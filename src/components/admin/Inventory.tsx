@@ -152,6 +152,11 @@ export default function Inventory({ theme, lang }: InventoryProps) {
         body: JSON.stringify(payload)
       });
 
+      const contentType = res.headers.get("content-type");
+      if (contentType && contentType.includes("text/html")) {
+        throw new Error("Server returned HTML. Ensure you run 'npm run build' so the frontend hits the API on port 8000 correctly!");
+      }
+
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
         let errorMessage = 'Failed to add product';

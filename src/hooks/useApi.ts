@@ -18,6 +18,11 @@ export function useApi<T>(endpoint: string, options?: { pollInterval?: number })
         headers: { 'Authorization': `Bearer ${token}` }
       });
 
+      const contentType = res.headers.get("content-type");
+      if (contentType && contentType.includes("text/html")) {
+        throw new Error("Server returned HTML. Ensure you run 'npm run build' so the frontend hits the API correctly.");
+      }
+
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
         let errorMessage = 'Failed to fetch';

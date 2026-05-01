@@ -43,7 +43,6 @@ else:
     print("WARNING: GEMINI_API_KEY environment variable not set. AI Chatbot features will not work.")
     client = None
 
-
 # ==========================================
 # Models (جداول دیتابیس)
 # ==========================================
@@ -61,7 +60,6 @@ class Product(Base):
     createdAt = Column(DateTime, default=datetime.datetime.utcnow)
     updatedAt = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 
-
 class Ledger(Base):
     __tablename__ = "Ledgers"
     id = Column(Integer, primary_key=True, index=True)
@@ -74,20 +72,19 @@ class Ledger(Base):
     createdAt = Column(DateTime, default=datetime.datetime.utcnow)
     updatedAt = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 
-
 class Employee(Base):
     __tablename__ = "Employees"
     id = Column(Integer, primary_key=True, index=True)
+    zk_id = Column(String, nullable=True) # ID دستگاه حاضری (ZKTeco)
     full_name = Column(String, nullable=False)
-    father_name = Column(String, nullable=True, default="-")  # ولد
-    province = Column(String, nullable=True, default="-")  # ولایت
+    father_name = Column(String, nullable=True, default="-") # ولد
+    province = Column(String, nullable=True, default="-") # ولایت
     position = Column(String, nullable=False)
     salary = Column(Float, nullable=False)
     phone = Column(String)
-    hire_date = Column(Date, default=datetime.date.today)  # تاریخ ثبت نام
+    hire_date = Column(Date, default=datetime.date.today) # تاریخ ثبت نام
     createdAt = Column(DateTime, default=datetime.datetime.utcnow)
     updatedAt = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
-
 
 class Production(Base):
     __tablename__ = "Productions"
@@ -100,7 +97,6 @@ class Production(Base):
     createdAt = Column(DateTime, default=datetime.datetime.utcnow)
     updatedAt = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 
-
 class Customer(Base):
     __tablename__ = "Customers"
     id = Column(Integer, primary_key=True, index=True)
@@ -110,7 +106,6 @@ class Customer(Base):
     total_spent = Column(Float, default=0)
     createdAt = Column(DateTime, default=datetime.datetime.utcnow)
     updatedAt = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
-
 
 class Order(Base):
     __tablename__ = "Orders"
@@ -122,7 +117,6 @@ class Order(Base):
     createdAt = Column(DateTime, default=datetime.datetime.utcnow)
     updatedAt = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 
-
 class OrderItem(Base):
     __tablename__ = "OrderItems"
     id = Column(Integer, primary_key=True, index=True)
@@ -133,18 +127,16 @@ class OrderItem(Base):
     createdAt = Column(DateTime, default=datetime.datetime.utcnow)
     updatedAt = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 
-
 class Attendance(Base):
     __tablename__ = "Attendances"
     id = Column(Integer, primary_key=True, index=True)
-    status = Column(String, nullable=False)  # 'PRESENT', 'LATE', 'ABSENT'
+    status = Column(String, nullable=False) # 'PRESENT', 'LATE', 'ABSENT'
     date = Column(String, nullable=False)
-    check_in = Column(String, nullable=True)  # Added for ZKTeco entry time
+    check_in = Column(String, nullable=True)   # Added for ZKTeco entry time
     check_out = Column(String, nullable=True)  # Added for ZKTeco exit time
     EmployeeId = Column(Integer, ForeignKey("Employees.id"))
     createdAt = Column(DateTime, default=datetime.datetime.utcnow)
     updatedAt = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
-
 
 class User(Base):
     __tablename__ = "Users"
@@ -155,12 +147,10 @@ class User(Base):
     createdAt = Column(DateTime, default=datetime.datetime.utcnow)
     updatedAt = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 
-
 # ==========================================
 # Schema Migrations (به‌روزرسانی خودکار دیتابیس)
 # ==========================================
 from sqlalchemy import inspect
-
 
 def upgrade_database_schema(engine):
     """
@@ -197,7 +187,6 @@ def upgrade_database_schema(engine):
                     conn.rollback()
                     print(f"Migration Notice (Attendances): {str(e)}")
 
-
 # اجرای مایگریشن‌ها قبل از ایجاد جداول
 upgrade_database_schema(engine)
 
@@ -205,11 +194,10 @@ upgrade_database_schema(engine)
 try:
     Base.metadata.create_all(bind=engine)
 except Exception as e:
-    print("\n" + "=" * 60)
+    print("\n" + "="*60)
     print("❌ ERROR: Database Connection Failed!")
     print("It seems PostgreSQL is not running or 'sheen_ghazy_erp' database does not exist.")
-    print("=" * 60 + "\n")
-
+    print("="*60 + "\n")
 
 def init_default_admin():
     db = SessionLocal()
@@ -226,7 +214,6 @@ def init_default_admin():
     finally:
         db.close()
 
-
 try:
     from passlib.context import CryptContext
     import jwt
@@ -237,13 +224,12 @@ except ImportError:
 # تنظیمات امنیت (JWT)
 SECRET_KEY = os.getenv("JWT_SECRET_KEY", "super-secret-key-sheen-ghazy-12345")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # One day
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 # One day
 
 if CryptContext:
     pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 else:
     pwd_context = None
-
 
 def verify_password(plain_password, hashed_password):
     if pwd_context:
@@ -254,16 +240,13 @@ def verify_password(plain_password, hashed_password):
             return plain_password == hashed_password
     return plain_password == hashed_password
 
-
 def get_password_hash(password):
     if pwd_context:
         return pwd_context.hash(password)
     return password
 
-
 # Initialize admin now that hashing functions are defined
 init_default_admin()
-
 
 def create_access_token(data: dict, expires_delta: Optional[datetime.timedelta] = None):
     to_encode = data.copy()
@@ -276,7 +259,6 @@ def create_access_token(data: dict, expires_delta: Optional[datetime.timedelta] 
         encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
         return encoded_jwt
     return "fake-jwt-token"
-
 
 # ==========================================
 # FastAPI App Setup
@@ -292,7 +274,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
 @app.on_event("startup")
 async def startup_event():
     try:
@@ -307,17 +288,14 @@ async def startup_event():
         print("👉 Please make sure PostgreSQL is installed and the service is running.")
         print("👉 Check that your username/password and 'sheen_ghazy_erp' database exist.")
 
-
 # سیستم مدیریت خطاهای هوشمند
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     return JSONResponse(status_code=500, content={"error": f"خطای سرور: {str(exc)}"})
 
-
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     return JSONResponse(status_code=422, content={"error": f"خطای اطلاعات ورودی: {exc.errors()}"})
-
 
 # Dependency برای گرفتن سشن دیتابیس
 def get_db():
@@ -326,7 +304,6 @@ def get_db():
         yield db
     finally:
         db.close()
-
 
 # ==========================================
 # Gemini Tools & Configuration
@@ -341,7 +318,6 @@ def check_live_price(product_name: str) -> str:
         return f"متاسفانه محصولی با نام {product_name} یافت نشد."
     finally:
         db.close()
-
 
 def place_new_order(customer_name: str, whatsapp: str, address: str, product_name: str, quantity: int) -> str:
     """Inserts a new PENDING order into the PostgreSQL Orders and Customers tables."""
@@ -386,7 +362,6 @@ def place_new_order(customer_name: str, whatsapp: str, address: str, product_nam
     finally:
         db.close()
 
-
 tools_list = [check_live_price, place_new_order]
 
 system_instruction = """
@@ -398,7 +373,6 @@ If the user wants to buy something, intelligently ask for their Name, WhatsApp N
 Once collected, trigger the place_new_order function and reply exactly with: "سفارش شما با موفقیت ثبت شد. تیم فروش به زودی با شما در واتساپ به تماس خواهد شد."
 """
 
-
 # We will instantiate the chat inside the endpoint to maintain statelessness or handle history properly.
 
 # ==========================================
@@ -408,18 +382,15 @@ class ChatMessage(BaseModel):
     role: str
     content: str
 
-
 class ChatRequest(BaseModel):
     message: str
     history: List[ChatMessage] = []
-
 
 class ExpenseCreate(BaseModel):
     amount: float
     description: str
     department: str = "GENERAL"
     type: Optional[str] = None
-
 
 class ProductCreate(BaseModel):
     name: str
@@ -431,15 +402,14 @@ class ProductCreate(BaseModel):
     current_price: float
     stock_quantity: int = 0
 
-
 class EmployeeCreate(BaseModel):
     full_name: str
+    zk_id: Optional[str] = None
     father_name: Optional[str] = "-"
     province: Optional[str] = "-"
     position: str
     salary: float
     phone: Optional[str] = None
-
 
 class ProductionCreate(BaseModel):
     ProductId: int
@@ -447,22 +417,18 @@ class ProductionCreate(BaseModel):
     raw_material_used: float
     department: str = "PIPE"
 
-
 class DirectSaleItem(BaseModel):
     ProductId: int
     quantity: int
     unit_price: float
 
-
 class DirectSaleCreate(BaseModel):
     CustomerId: int
     items: List[DirectSaleItem]
 
-
 class LoginRequest(BaseModel):
     username: str
     password: str
-
 
 class ProductUpdate(BaseModel):
     name: Optional[str] = None
@@ -472,28 +438,23 @@ class ProductUpdate(BaseModel):
     current_price: Optional[float] = None
     stock_quantity: Optional[int] = None
 
-
 class AttendanceCreate(BaseModel):
     EmployeeId: int
     status: str
     date: str
 
-
 class QuickAttendanceCreate(BaseModel):
     date: str
-
 
 class PublicOrderItem(BaseModel):
     productId: int
     quantity: int
-
 
 class PublicOrderCreate(BaseModel):
     fullName: str
     whatsappNumber: str
     address: str
     items: List[PublicOrderItem]
-
 
 # ==========================================
 # API Routes (مسیرهای ارتباطی)
@@ -515,8 +476,7 @@ async def chat_endpoint(request: ChatRequest):
             gemini_history.append({"role": role, "parts": [{"text": msg.content}]})
 
         if not client:
-            return JSONResponse(status_code=500, content={
-                "reply": "خطا: کلید API جمنای (GEMINI_API_KEY) در سرور تنظیم نشده است. لطفا آن را در فایل .env تنظیم کنید."})
+            return JSONResponse(status_code=500, content={"reply": "خطا: کلید API جمنای (GEMINI_API_KEY) در سرور تنظیم نشده است. لطفا آن را در فایل .env تنظیم کنید."})
 
         try:
             chat = client.chats.create(
@@ -530,20 +490,17 @@ async def chat_endpoint(request: ChatRequest):
             error_str = str(api_error)
             if "404" in error_str or "NOT_FOUND" in error_str:
                 print(f"Model 404 Error caught. Returning graceful fallback. Details: {error_str}")
-                return {
-                    "reply": "متاسفانه سیستم هوش مصنوعی در حال حاضر در دسترس نیست (خطای ارتباط با سرور). لطفاً برای ثبت سفارش مستقیماً با شماره واتساپ شرکت به تماس شوید."}
+                return {"reply": "متاسفانه سیستم هوش مصنوعی در حال حاضر در دسترس نیست (خطای ارتباط با سرور). لطفاً برای ثبت سفارش مستقیماً با شماره واتساپ شرکت به تماس شوید."}
             raise api_error
 
     except Exception as e:
         print(f"Chat Error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-
 from fastapi.security import OAuth2PasswordBearer
 from fastapi import status
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
-
 
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     credentials_exception = HTTPException(
@@ -552,7 +509,7 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         headers={"WWW-Authenticate": "Bearer"},
     )
     if not jwt:
-        return User(username="fallback_user", role="ADMIN")  # fallback if jwt not installed
+        return User(username="fallback_user", role="ADMIN") # fallback if jwt not installed
 
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
@@ -567,7 +524,6 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         raise credentials_exception
     return user
 
-
 @app.post("/api/auth/login")
 def login(req: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.username == req.username).first()
@@ -576,8 +532,7 @@ def login(req: LoginRequest, db: Session = Depends(get_db)):
 
     # در محیط واقعی، پسورد باید با verify_password چک شود
     # برای جلوگیری از قفل شدن شما در حال حاضر، اگر پسورد هش نشده باشد، مسقیم چک میکنیم
-    is_valid = verify_password(req.password, user.password_hash) if pwd_context else (
-                req.password == user.password_hash)
+    is_valid = verify_password(req.password, user.password_hash) if pwd_context else (req.password == user.password_hash)
 
     if not is_valid and user.password_hash != req.password:
         raise HTTPException(status_code=400, detail="نام کاربری یا رمز عبور اشتباه است")
@@ -588,11 +543,9 @@ def login(req: LoginRequest, db: Session = Depends(get_db)):
     )
     return {"token": access_token, "role": user.role}
 
-
 @app.get("/")
 def read_root():
     return {"message": "Sheen Ghazy ERP API is running on FastAPI!"}
-
 
 @app.get("/api/db-status")
 def db_status(db: Session = Depends(get_db)):
@@ -601,7 +554,6 @@ def db_status(db: Session = Depends(get_db)):
         return {"status": "connected", "database": "PostgreSQL (FastAPI)"}
     except Exception as e:
         return {"status": "error", "error": str(e)}
-
 
 @app.patch("/api/products/{id}")
 def update_product(id: int, product: ProductUpdate, db: Session = Depends(get_db)):
@@ -617,7 +569,6 @@ def update_product(id: int, product: ProductUpdate, db: Session = Depends(get_db
     db.refresh(db_product)
     return db_product
 
-
 @app.delete("/api/products/{id}")
 def delete_product(id: int, db: Session = Depends(get_db)):
     db_product = db.query(Product).filter(Product.id == id).first()
@@ -632,12 +583,10 @@ def delete_product(id: int, db: Session = Depends(get_db)):
     db.commit()
     return {"message": "محصول با موفقیت حذف شد"}
 
-
 class DirectSaleCreate(BaseModel):
     CustomerId: Optional[int] = None
     customer_name: Optional[str] = None
     items: List[DirectSaleItem]
-
 
 @app.post("/api/orders/direct")
 def create_direct_sale(sale: DirectSaleCreate, db: Session = Depends(get_db)):
@@ -714,11 +663,9 @@ def create_direct_sale(sale: DirectSaleCreate, db: Session = Depends(get_db)):
         }
     }
 
-
 @app.get("/api/orders")
 def get_orders(db: Session = Depends(get_db)):
     return db.query(Order).all()
-
 
 @app.post("/api/orders/{id}/confirm")
 def confirm_order(id: int, db: Session = Depends(get_db)):
@@ -742,7 +689,6 @@ def confirm_order(id: int, db: Session = Depends(get_db)):
     db.commit()
     return order
 
-
 @app.post("/api/attendance")
 def mark_attendance(att: AttendanceCreate, db: Session = Depends(get_db)):
     time_str = datetime.datetime.now().strftime("%I:%M %p")
@@ -763,7 +709,6 @@ def mark_attendance(att: AttendanceCreate, db: Session = Depends(get_db)):
     db.refresh(db_att)
     return db_att
 
-
 @app.post("/api/attendance/quick")
 def quick_attendance(req: QuickAttendanceCreate, db: Session = Depends(get_db)):
     time_str = datetime.datetime.now().strftime("%I:%M %p")
@@ -781,10 +726,8 @@ def quick_attendance(req: QuickAttendanceCreate, db: Session = Depends(get_db)):
     db.commit()
     return {"success": True}
 
-
 class SyncRequest(BaseModel):
     device_ip: str = "192.168.1.201"
-
 
 @app.post("/api/attendance/sync")
 def sync_zkteco(req: SyncRequest = None, db: Session = Depends(get_db)):
@@ -803,7 +746,7 @@ def sync_zkteco(req: SyncRequest = None, db: Session = Depends(get_db)):
     try:
         conn = zk.connect()
         conn.disable_device()
-        attendances = conn.get_attendance()  # List of ZK Attendance objects
+        attendances = conn.get_attendance() # List of ZK Attendance objects
 
         # Aggregate logic
         # We need to find check-ins and check-outs for each user per day
@@ -834,10 +777,18 @@ def sync_zkteco(req: SyncRequest = None, db: Session = Depends(get_db)):
                 if punches[0].time() > datetime.time(8, 30):
                     status = "LATE"
 
-                # Find employee id by matching zk_id. In your system, employee id is currently used,
-                # but let's assume the ZK user_id maps to Employee.id
+                # Find employee id by matching zk_id or mapping
+                db_emp = db.query(Employee).filter(Employee.zk_id == str(uid)).first()
+                if not db_emp:
+                    db_emp = db.query(Employee).filter(Employee.id == uid).first()
+
+                if not db_emp:
+                    continue # Skip if employee entirely missing
+
+                matched_emp_id = db_emp.id
+
                 db_att = db.query(Attendance).filter(
-                    Attendance.EmployeeId == uid,
+                    Attendance.EmployeeId == matched_emp_id,
                     Attendance.date == date_str
                 ).first()
 
@@ -848,7 +799,7 @@ def sync_zkteco(req: SyncRequest = None, db: Session = Depends(get_db)):
                     db_att.status = status
                 else:
                     new_att = Attendance(
-                        EmployeeId=uid,
+                        EmployeeId=matched_emp_id,
                         date=date_str,
                         check_in=check_in_time,
                         check_out=check_out_time,
@@ -872,12 +823,10 @@ def sync_zkteco(req: SyncRequest = None, db: Session = Depends(get_db)):
         if conn:
             conn.disconnect()
 
-
 @app.get("/api/attendance/report")
 def export_attendance_report(month: str = "current", db: Session = Depends(get_db)):
     if not pd:
-        raise HTTPException(status_code=500,
-                            detail="Pandas library not installed. Please run: pip install pandas openpyxl")
+        raise HTTPException(status_code=500, detail="Pandas library not installed. Please run: pip install pandas openpyxl")
 
     # Get attendance via join to grab employee full names
     attendances = db.query(Attendance, Employee).join(Employee, Attendance.EmployeeId == Employee.id).all()
@@ -935,7 +884,6 @@ def export_attendance_report(month: str = "current", db: Session = Depends(get_d
         headers=headers
     )
 
-
 @app.post("/api/public/orders")
 def create_public_order(order_req: PublicOrderCreate, db: Session = Depends(get_db)):
     customer = db.query(Customer).filter(Customer.whatsapp_number == order_req.whatsappNumber).first()
@@ -965,13 +913,11 @@ def create_public_order(order_req: PublicOrderCreate, db: Session = Depends(get_
     db.commit()
     return {"success": True, "orderId": new_order.id}
 
-
 # --- Products ---
 @app.get("/api/products")
 @app.get("/api/public/products")
 def get_products(db: Session = Depends(get_db)):
     return db.query(Product).all()
-
 
 @app.post("/api/products")
 def create_product(product: ProductCreate, db: Session = Depends(get_db)):
@@ -981,12 +927,10 @@ def create_product(product: ProductCreate, db: Session = Depends(get_db)):
     db.refresh(db_product)
     return db_product
 
-
 # --- Ledger (مصارف و درآمدها) ---
 @app.get("/api/ledger")
 def get_ledger(db: Session = Depends(get_db)):
     return db.query(Ledger).order_by(Ledger.date.desc()).limit(200).all()
-
 
 @app.post("/api/ledger")
 def create_ledger(expense: ExpenseCreate, db: Session = Depends(get_db)):
@@ -1001,7 +945,6 @@ def create_ledger(expense: ExpenseCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(db_ledger)
     return db_ledger
-
 
 # --- Employees (کارمندان) ---
 @app.get("/api/employees")
@@ -1026,7 +969,6 @@ def get_employees(db: Session = Depends(get_db)):
         results.append(emp_dict)
     return results
 
-
 @app.post("/api/employees")
 def create_employee(emp: EmployeeCreate, db: Session = Depends(get_db)):
     db_emp = Employee(**emp.model_dump(exclude_unset=True))
@@ -1035,12 +977,10 @@ def create_employee(emp: EmployeeCreate, db: Session = Depends(get_db)):
     db.refresh(db_emp)
     return db_emp
 
-
 # --- Production (تولیدات) ---
 @app.get("/api/production")
 def get_production(db: Session = Depends(get_db)):
     return db.query(Production).order_by(Production.date.desc()).all()
-
 
 @app.post("/api/production")
 def create_production(prod: ProductionCreate, db: Session = Depends(get_db)):
@@ -1060,12 +1000,10 @@ def create_production(prod: ProductionCreate, db: Session = Depends(get_db)):
     db.refresh(db_prod)
     return db_prod
 
-
 # --- Customers ---
 @app.get("/api/customers")
 def get_customers(db: Session = Depends(get_db)):
     return db.query(Customer).all()
-
 
 @app.post("/api/orders/direct")
 def create_direct_sale(sale: DirectSaleCreate, db: Session = Depends(get_db)):
@@ -1094,7 +1032,6 @@ def create_direct_sale(sale: DirectSaleCreate, db: Session = Depends(get_db)):
     db.commit()
     return {"success": True, "total_amount": total_amount}
 
-
 import os
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -1102,7 +1039,6 @@ from fastapi.responses import FileResponse
 if os.path.exists("dist") and os.path.isdir("dist"):
     # Serve assets folder specifically
     app.mount("/assets", StaticFiles(directory="dist/assets"), name="assets")
-
 
     # Simple Fallback for React Router
     @app.get("/{full_path:path}")
@@ -1118,5 +1054,4 @@ if os.path.exists("dist") and os.path.isdir("dist"):
 
 if __name__ == "__main__":
     import uvicorn
-
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
