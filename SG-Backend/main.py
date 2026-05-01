@@ -789,68 +789,88 @@ class SyncRequest(BaseModel):
 @app.post("/api/attendance/sync")
 def sync_zkteco(req: SyncRequest = None, db: Session = Depends(get_db)):
     """
-    MOCKED ZKTECO ENDPOINT (Hardware not yet available).
-    Simulates successful connection and injects fake attendance records.
+    Actual ZKTECO ENDPOINT using `pyzk`.
+    Connects to the machine on `device_ip` (e.g. 192.168.50.200), downloads attendances and saves them.
     """
+    device_ip = req.device_ip if req else "192.168.50.200"
+
+    if not ZK:
+        return {"success": False, "message": "کتابخانه ZK نصب نشده است (pip install pyzk)"}
+
+    zk = ZK(device_ip, port=4370, timeout=5, password=0, force_udp=False, ommit_ping=False)
+    conn = None
+
     try:
-        # Simulate network latency
-        import time
-        time.sleep(1.5)
+        conn = zk.connect()
+        conn.disable_device()
+        attendances = conn.get_attendance()  # List of ZK Attendance objects
 
-        # Ensure we have at least one employee in the database
-        employees = db.query(Employee).limit(3).all()
-        if not employees:
-            return {
-                "success": False,
-                "message": "هیچ کارمندی برای ثبت حاضری آزمایشی یافت نشد. لطفاً یک کارمند ثبت کنید."
-            }
+        # Aggregate logic
+        # We need to find check-ins and check-outs for each user per day
+        from collections import defaultdict
 
-        today_str = datetime.datetime.now().strftime("%Y-%m-%d")
+        punch_data = defaultdict(lambda: defaultdict(list))
 
-        # Fake punch data matching your requirements
-        mock_punches = [
-            {"check_in": "07:45 AM", "check_out": "05:00 PM", "status": "PRESENT"},
-            {"check_in": "08:15 AM", "check_out": "05:10 PM", "status": "LATE"},
-            {"check_in": "07:50 AM", "check_out": "04:00 PM", "status": "PRESENT"}
-        ]
+        for att in attendances:
+            # att.user_id = string (ZK user ID)
+            # att.timestamp = datetime object
+            uid = int(att.user_id)
+            date_str = att.timestamp.strftime("%Y-%m-%d")
+            time_str = att.timestamp.strftime("%I:%M %p")
+
+            punch_data[date_str][uid].append(att.timestamp)
 
         records_added = 0
-        for idx, emp in enumerate(employees):
-            # Select mock data for this user
-            mock_data = mock_punches[idx % len(mock_punches)]
 
-            db_att = db.query(Attendance).filter(
-                Attendance.EmployeeId == emp.id,
-                Attendance.date == today_str
-            ).first()
+        # Process and save to database
+        for date_str, users in punch_data.items():
+            for uid, punches in users.items():
+                punches.sort()
+                check_in_time = punches[0].strftime("%I:%M %p")
+                check_out_time = punches[-1].strftime("%I:%M %p") if len(punches) > 1 else None
 
-            if db_att:
-                db_att.check_in = mock_data["check_in"]
-                db_att.check_out = mock_data["check_out"]
-                db_att.status = mock_data["status"]
-            else:
-                new_att = Attendance(
-                    EmployeeId=emp.id,
-                    date=today_str,
-                    check_in=mock_data["check_in"],
-                    check_out=mock_data["check_out"],
-                    status=mock_data["status"]
-                )
-                db.add(new_att)
+                # Default logic for status
+                status = "PRESENT"
+                if punches[0].time() > datetime.time(8, 30):
+                    status = "LATE"
 
-            records_added += 1
+                # Find employee id by matching zk_id. In your system, employee id is currently used,
+                # but let's assume the ZK user_id maps to Employee.id
+                db_att = db.query(Attendance).filter(
+                    Attendance.EmployeeId == uid,
+                    Attendance.date == date_str
+                ).first()
+
+                if db_att:
+                    db_att.check_in = check_in_time
+                    if check_out_time:
+                        db_att.check_out = check_out_time
+                    db_att.status = status
+                else:
+                    new_att = Attendance(
+                        EmployeeId=uid,
+                        date=date_str,
+                        check_in=check_in_time,
+                        check_out=check_out_time,
+                        status=status
+                    )
+                    db.add(new_att)
+
+                records_added += 1
 
         db.commit()
+        conn.enable_device()
 
         return {
             "success": True,
-            "message": "همگامسازی (آزمایشی) با موفقیت انجام شد",
+            "message": f"ارتباط با دستگاه الزمان 192.168.50.200 برقرار شد و اطلاعات بروز شد.",
             "records_added": records_added
         }
-
     except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=f"خطای سرور در همگام‌سازی آزمایشی: {str(e)}")
+        return {"success": False, "message": f"خطا در ارتباط با دستگاه ZKTeco: {str(e)}"}
+    finally:
+        if conn:
+            conn.disconnect()
 
 
 @app.get("/api/attendance/report")

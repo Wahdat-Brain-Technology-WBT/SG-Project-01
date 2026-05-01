@@ -7,3 +7,13 @@ python-dotenv
 passlib
 bcrypt
 pyjwt
+fastapi
+uvicorn
+sqlalchemy
+psycopg2-binary
+pydantic
+python-dotenv
+pyzk
+google-genai
+pandas
+openpyxl
