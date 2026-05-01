@@ -377,8 +377,8 @@ export default function AdminPanel() {
           showToast('Server returned an error', 'error');
         }
       }
-    } catch (error) {
-      showToast('Error connecting to server', 'error');
+    } catch (error: any) {
+      showToast('خطا در ارتباط با سرور: ' + (error.message || error), 'error');
     } finally {
       setIsSaving(false);
     }
@@ -413,8 +413,8 @@ export default function AdminPanel() {
         const data = await res.json();
         showToast(getErrorMsg(data, 'Failed to add production'), 'error');
       }
-    } catch (error) {
-      showToast('Error connecting to server', 'error');
+    } catch (error: any) {
+      showToast('خطا در ارتباط با سرور: ' + (error.message || error), 'error');
     } finally {
       setIsSaving(false);
     }
