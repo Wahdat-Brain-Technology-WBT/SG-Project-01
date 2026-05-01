@@ -310,7 +310,7 @@ export default function AdminPanel() {
         }))
       };
 
-      const res = await fetch(`${API_URL}/api/orders/direct`, {
+      const res = await fetchWithTimeout(`${API_URL}/api/orders/direct`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -355,7 +355,7 @@ export default function AdminPanel() {
         zkteco_id: zktecoIdParsed
       };
 
-      const res = await fetch(`${API_URL}/api/employees`, {
+      const res = await fetchWithTimeout(`${API_URL}/api/employees`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -395,7 +395,7 @@ export default function AdminPanel() {
         raw_material_used: parseFloat(toEnglishDigits(newProduction.raw_material_used)) || 0
       };
 
-      const res = await fetch(`${API_URL}/api/production`, {
+      const res = await fetchWithTimeout(`${API_URL}/api/production`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -653,7 +653,7 @@ export default function AdminPanel() {
     if (isSaving || !window.confirm(lang === 'dr' ? 'آیا از حذف این کارمند اطمینان دارید؟' : 'Are you sure you want to delete this employee?')) return;
     setIsSaving(true);
     try {
-      const res = await fetch(`${API_URL}/api/employees/${id}`, {
+      const res = await fetchWithTimeout(`${API_URL}/api/employees/${id}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -682,7 +682,7 @@ export default function AdminPanel() {
     if (payload.stock_quantity !== undefined) payload.stock_quantity = parseInt(toEnglishDigits(payload.stock_quantity), 10);
 
     try {
-      const res = await fetch(`${API_URL}/api/products/${id}`, {
+      const res = await fetchWithTimeout(`${API_URL}/api/products/${id}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -708,7 +708,7 @@ export default function AdminPanel() {
     if (isSaving) return;
     setIsSaving(true);
     try {
-      const res = await fetch(`${API_URL}/api/orders/${id}/confirm`, {
+      const res = await fetchWithTimeout(`${API_URL}/api/orders/${id}/confirm`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` },
       });
@@ -747,7 +747,7 @@ export default function AdminPanel() {
 
     setIsSaving(true);
     try {
-      const res = await fetch(`${API_URL}/api/ledger`, {
+      const res = await fetchWithTimeout(`${API_URL}/api/ledger`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -787,7 +787,7 @@ export default function AdminPanel() {
         stock_quantity: 0
       };
 
-      const res = await fetch(`${API_URL}/api/products`, {
+      const res = await fetchWithTimeout(`${API_URL}/api/products`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -817,7 +817,7 @@ export default function AdminPanel() {
     setIsSaving(true);
     try {
       const todayStr = new Date().toISOString().split('T')[0];
-      const res = await fetch(`${API_URL}/api/attendance`, {
+      const res = await fetchWithTimeout(`${API_URL}/api/attendance`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -844,7 +844,7 @@ export default function AdminPanel() {
     setIsSaving(true);
     try {
       const todayStr = new Date().toISOString().split('T')[0];
-      const res = await fetch(`${API_URL}/api/attendance/quick`, {
+      const res = await fetchWithTimeout(`${API_URL}/api/attendance/quick`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

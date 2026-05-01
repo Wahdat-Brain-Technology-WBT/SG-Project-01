@@ -61,11 +61,25 @@ export default function Employees({
     window.open(`${API_URL}/api/attendance/report?month=current`, '_blank');
   };
 
+  const fetchWithTimeout = async (url: string, options: any = {}, timeout = 15000) => {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), timeout);
+    try {
+      const response = await fetch(url, { ...options, signal: controller.signal });
+      clearTimeout(id);
+      return response;
+    } catch (err: any) {
+      clearTimeout(id);
+      if (err.name === 'AbortError') throw new Error('Request timed out - check server/firewall');
+      throw err;
+    }
+  };
+
   const handleZkSync = async () => {
     setIsSyncing(true);
     setToast(null);
     try {
-      const res = await fetch(`${API_URL}/api/attendance/sync`, {
+      const res = await fetchWithTimeout(`${API_URL}/api/attendance/sync`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('admin_token') || ''}`,
@@ -94,7 +108,7 @@ export default function Employees({
     setIsSavingAdvance(true);
     try {
       const amt = parseFloat(toEnglishDigits(advanceAmount));
-      const res = await fetch(`${API_URL}/api/employees/${selectedEmpForSalary.id}/advances`, {
+      const res = await fetchWithTimeout(`${API_URL}/api/employees/${selectedEmpForSalary.id}/advances`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('admin_token') || ''}`,
