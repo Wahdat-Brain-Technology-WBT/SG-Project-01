@@ -40,7 +40,6 @@ export default function Employees({
   theme
 }: EmployeesProps) {
   const [searchTerm, setSearchTerm] = useState('');
-  const [deviceIp, setDeviceIp] = useState('192.168.50.200');
   const [isSyncing, setIsSyncing] = useState(false);
   const [toast, setToast] = useState<{message: string, type: 'success'|'error'} | null>(null);
 
@@ -67,7 +66,7 @@ export default function Employees({
           'Authorization': `Bearer ${localStorage.getItem('admin_token') || ''}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ device_ip: deviceIp })
+        body: JSON.stringify({ device_ip: '192.168.50.200' })
       });
 
       const data = await res.json();
@@ -109,17 +108,6 @@ export default function Employees({
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          <div className="flex flex-col sm:flex-row items-center gap-2">
-            <span className="text-xs font-bold text-gray-400 dark:text-gray-500 hidden sm:block">IP دستگاه:</span>
-            <input
-              type="text"
-              value={deviceIp}
-              onChange={(e) => setDeviceIp(e.target.value)}
-              className="text-center font-mono w-36 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl px-3 py-[10px] text-sm text-gray-700 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-black shadow-sm"
-              dir="ltr"
-              placeholder="192.168.1.50"
-            />
-          </div>
           {/* EXCEL REPORT */}
           <button
             onClick={handleExport}

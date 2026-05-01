@@ -671,7 +671,7 @@ def quick_attendance(req: QuickAttendanceCreate, db: Session = Depends(get_db)):
 
 
 class SyncRequest(BaseModel):
-    device_ip: str = "192.168.50.99"
+    device_ip: str = "192.168.50.200"
 
 
 @app.post("/api/attendance/sync")
@@ -679,7 +679,7 @@ def sync_zkteco(req: SyncRequest = None, db: Session = Depends(get_db)):
     """
     Connect to ZKTeco K70 device to fetch attendance records
     """
-    device_ip = req.device_ip if req and req.device_ip else "192.168.50.99"
+    device_ip = req.device_ip if req and req.device_ip else "192.168.50.200"
 
     zk_client = ZK(device_ip, port=4370, timeout=10, password=0, force_udp=False, ommit_ping=False)
 
