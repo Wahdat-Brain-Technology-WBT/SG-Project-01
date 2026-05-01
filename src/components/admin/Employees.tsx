@@ -12,6 +12,7 @@ interface EmployeesProps {
   onAddEmployee: () => void;
   onAttendance: (employeeId: number, status: 'PRESENT' | 'ABSENT') => Promise<void>;
   onQuickAttendance: () => Promise<void>;
+  onDeleteEmployee: (id: number) => Promise<void>;
   lang: 'dr' | 'ps' | 'en';
   t: any;
   theme: 'light' | 'dark';
@@ -33,6 +34,7 @@ export default function Employees({
   onAddEmployee,
   onAttendance,
   onQuickAttendance,
+  onDeleteEmployee,
   lang,
   t,
   theme
@@ -41,8 +43,9 @@ export default function Employees({
   const [isSyncing, setIsSyncing] = useState(false);
   const [toast, setToast] = useState<{message: string, type: 'success'|'error'} | null>(null);
 
-  // Note: For Next.js, using standard Date string
-  const todayStr = new Date().toISOString().split('T')[0];
+  // A safer todayStr that respects the user's local timezone (Kabul time)
+  const today = new Date();
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
   const filteredEmployees = employees.filter(e =>
     e.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -62,7 +65,8 @@ export default function Employees({
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('admin_token') || ''}`,
           'Content-Type': 'application/json'
-        }
+        },
+        body: JSON.stringify({ device_ip: '192.168.50.99' })
       });
 
       const data = await res.json();
@@ -170,7 +174,7 @@ export default function Employees({
             <div>
               <p className="text-[11px] font-black text-gray-500 dark:text-gray-400 uppercase tracking-widest">حاضر در کارخانه</p>
               <p className="text-2xl font-black text-emerald-600 dark:text-emerald-400 font-mono">
-                {formatNumber(employees.filter(e => e.Attendances?.some((a: any) => a.date === todayStr && a.status === 'PRESENT')).length)}
+                {formatNumber(employees.filter(e => e.Attendances?.some((a: any) => a.date === todayStr && (a.status === 'PRESENT' || a.status === 'LATE'))).length)}
               </p>
             </div>
           </div>
@@ -309,6 +313,9 @@ export default function Employees({
 
                       <td className="px-6 py-5 text-end">
                         <div className="flex items-center justify-end gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button onClick={() => onDeleteEmployee(e.id)} className="text-[12px] font-black text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-500/10 px-3 py-1.5 rounded-lg border border-red-500/20 hover:bg-red-500 hover:text-white transition-colors" dir="ltr" title="حذف کارمند">
+                            حذف
+                          </button>
                           <button className="text-[12px] font-black text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-500/10 px-3 py-1.5 rounded-lg border border-blue-500/20 hover:bg-blue-500 hover:text-white transition-colors" dir="ltr">
                             {formatNumber(e.salary)} AFN
                           </button>

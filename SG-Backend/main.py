@@ -692,6 +692,8 @@ def sync_zkteco(req: SyncRequest = None, db: Session = Depends(get_db)):
         conn.enable_device()
         conn.disconnect()
 
+        print(f"Total attendance records fetched: {len(attendances) if attendances else 0}")
+
         if not attendances:
             return {"success": True, "message": "هیچ رکورد حاضری در دستگاه یافت نشد.", "records_added": 0}
 
@@ -702,16 +704,22 @@ def sync_zkteco(req: SyncRequest = None, db: Session = Depends(get_db)):
 
         for att in attendances:
             try:
-                emp_id = int(att.user_id)
+                # Strip spaces and null bytes which sometimes come from ZKTeco
+                cleaned_user_id = str(att.user_id).strip('\x00').strip()
+                emp_id = int(cleaned_user_id)
             except ValueError:
+                print(f"Warning: Could not parse ZKTeco user_id '{att.user_id}' as int.")
                 continue
 
             date_str = att.timestamp.strftime("%Y-%m-%d")
             daily_records[emp_id][date_str].append(att.timestamp)
 
+        print(f"Daily records mapped for employee IDs: {list(daily_records.keys())}")
+
         for emp_id, dates in daily_records.items():
             emp = db.query(Employee).filter(Employee.id == emp_id).first()
             if not emp:
+                print(f"Warning: Employee with ID {emp_id} not found in DB but exists in ZKTeco logs.")
                 continue
 
             for date_str, timestamps in dates.items():
@@ -931,6 +939,20 @@ def create_employee(emp: EmployeeCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(db_emp)
     return db_emp
+
+
+@app.delete("/api/employees/{emp_id}")
+def delete_employee(emp_id: int, db: Session = Depends(get_db)):
+    emp = db.query(Employee).filter(Employee.id == emp_id).first()
+    if not emp:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    # Delete associated records FIRST to avoid foreign key constraints
+    db.query(Attendance).filter(Attendance.EmployeeId == emp_id).delete()
+
+    db.delete(emp)
+    db.commit()
+    return {"success": True, "message": "Employee deleted"}
 
 
 # --- Production (تولیدات) ---
