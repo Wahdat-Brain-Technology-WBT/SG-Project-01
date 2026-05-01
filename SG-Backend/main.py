@@ -1,3 +1,19 @@
+# ==========================================
+# Critical Compatibility Patch for bcrypt/passlib
+# ==========================================
+try:
+    import bcrypt
+    import sys
+    # Fake __about__ module to satisfy passlib
+    if not hasattr(bcrypt, "__about__"):
+        from types import ModuleType
+        about = ModuleType("bcrypt.__about__")
+        about.__version__ = getattr(bcrypt, "__version__", "4.0.0")
+        bcrypt.__about__ = about
+        sys.modules["bcrypt.__about__"] = about
+except ImportError:
+    pass
+
 import os
 from google import genai
 from google.genai import types
@@ -151,20 +167,6 @@ class User(Base):
 # Schema Migrations (به‌روزرسانی خودکار دیتابیس)
 # ==========================================
 from sqlalchemy import inspect
-
-# Fix for Passlib mapping error with newer bcrypt versions
-import logging
-logging.getLogger("passlib").setLevel(logging.ERROR)
-
-# Monkeypatch passlib if needed for bcrypt 4.0+
-try:
-    import bcrypt
-    if not hasattr(bcrypt, "__about__") or not hasattr(bcrypt.__about__, "__version__"):
-        class FakeAbout:
-            def __init__(self): self.__version__ = getattr(bcrypt, "__version__", "4.0.0")
-        bcrypt.__about__ = FakeAbout()
-except ImportError:
-    pass
 
 def upgrade_database_schema(engine):
     """
