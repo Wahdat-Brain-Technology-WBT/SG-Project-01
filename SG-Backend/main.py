@@ -1,20 +1,24 @@
 import os
-from google import genai
-from google.genai import types
-from fastapi import FastAPI, Depends, HTTPException, Request
-from fastapi.responses import JSONResponse, StreamingResponse
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.exceptions import RequestValidationError
-from sqlalchemy import create_engine, Column, Integer, String, Float, Text, DateTime, Date, ForeignKey, text
-from sqlalchemy.orm import declarative_base, sessionmaker, Session, relationship
-from pydantic import BaseModel
-from typing import List, Optional, Any
 import datetime
 import io
 from collections import defaultdict
-from dotenv import load_dotenv
+from typing import List, Optional, Any
 
-# IoT & Reporting Modules
+from fastapi import FastAPI, Depends, HTTPException, Request, status
+from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.exceptions import RequestValidationError
+from fastapi.security import OAuth2PasswordBearer
+from pydantic import BaseModel
+from sqlalchemy import create_engine, Column, Integer, String, Float, Text, DateTime, Date, ForeignKey, text, inspect
+from sqlalchemy.orm import declarative_base, sessionmaker, Session, relationship
+from dotenv import load_dotenv
+from google import genai
+from google.genai import types
+
+load_dotenv()
+
+# ZKTeco and Pandas Imports
 try:
     from zk import ZK, const
 except ImportError:
@@ -24,9 +28,6 @@ try:
     import pandas as pd
 except ImportError:
     pd = None
-
-# بارگذاری متغیرهای محیطی
-load_dotenv()
 
 # تنظیمات دیتابیس PostgreSQL
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:123456@localhost:5432/sheen_ghazy_erp")
@@ -159,8 +160,6 @@ class User(Base):
 # ==========================================
 # Schema Migrations (به‌روزرسانی خودکار دیتابیس)
 # ==========================================
-from sqlalchemy import inspect
-
 
 def upgrade_database_schema(engine):
     """
@@ -518,9 +517,6 @@ async def chat_endpoint(request: ChatRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-from fastapi.security import OAuth2PasswordBearer
-from fastapi import status
-
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
 
@@ -702,7 +698,6 @@ def sync_zkteco(req: SyncRequest = None, db: Session = Depends(get_db)):
         records_added = 0
         records_updated = 0
 
-        from collections import defaultdict
         daily_records = defaultdict(lambda: defaultdict(list))
 
         for att in attendances:
@@ -806,7 +801,7 @@ def export_attendance_report(month: str = "current", db: Session = Depends(get_d
     df = pd.DataFrame(data)
 
     # ADVANCED REPORT REQUIREMENT: Grouping logically by Employee, then sorted by Date
-    df = df.sort_values(by=["نام کامل", "تاریخ"])
+    df = df.sort_values(by=["نام سیستم", "تاریخ حاضری"])
 
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
