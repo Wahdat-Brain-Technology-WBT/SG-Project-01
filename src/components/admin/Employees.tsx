@@ -65,16 +65,16 @@ export default function Employees({
         }
       });
 
-      if (!res.ok) throw new Error('Sync failed');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || data.error || 'خطا در ارتباط با دستگاه');
 
-      setToast({ message: 'همگام‌سازی ZKTeco با موفقیت انجام شد.', type: 'success' });
+      setToast({ message: data.message || 'همگام‌سازی ZKTeco با موفقیت انجام شد.', type: 'success' });
 
       // Attempt to trigger a reload/mutate globally if user is using SWR or window.location
       setTimeout(() => window.location.reload(), 2000);
-    } catch (err) {
-      // Show mock success since backend may not natively have this exact route yet
-      setToast({ message: 'اطلاعات با موفقیت از ZKTeco دریافت شد.', type: 'success' });
-      setTimeout(() => setToast(null), 3000);
+    } catch (err: any) {
+      setToast({ message: err.message || 'خطا در برقراری ارتباط با ZKTeco.', type: 'error' });
+      setTimeout(() => setToast(null), 4000);
     } finally {
       setIsSyncing(false);
     }

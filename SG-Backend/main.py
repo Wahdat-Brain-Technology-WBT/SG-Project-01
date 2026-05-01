@@ -766,11 +766,13 @@ def sync_zkteco(req: SyncRequest = None, db: Session = Depends(get_db)):
         db.commit()
 
         msg = f"همگام‌سازی با موفقیت انجام شد. ({records_added} ورودی جدید، {records_updated} بروزرسانی)"
+        if records_added == 0 and records_updated == 0:
+            return {"success": True, "message": "عملیات موفق اما اطلاعات جدیدی یافت نشد."}
         return {"success": True, "message": msg, "records_added": records_added}
 
     except Exception as e:
         db.rollback()
-        return {"success": False, "message": f"ارتباط با دستگاه ناموفق بود: {str(e)}"}
+        raise HTTPException(status_code=400, detail=f"ارتباط با دستگاه ناموفق بود: {str(e)}")
 
 
 @app.get("/api/attendance/report")

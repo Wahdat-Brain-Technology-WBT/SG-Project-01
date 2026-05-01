@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { Fingerprint, MonitorPlay, CheckCircle2, RotateCcw, AlertTriangle, Users } from 'lucide-react';
+import { API_URL } from '../config';
 
 export default function BiometricsDashboard({ isRTL = true }: { isRTL?: boolean }) {
   const [deviceIp, setDeviceIp] = useState("192.168.50.99");
@@ -12,13 +13,29 @@ export default function BiometricsDashboard({ isRTL = true }: { isRTL?: boolean 
     setSyncStatus('idle');
 
     try {
-      // In production, this will hit your FastAPI Python backend
-      // Example: await fetch(`http://127.0.0.1:8000/api/biometrics/sync?device_ip=${deviceIp}`, { method: 'POST' });
+      // Calls the actual backend ZKTeco sync route, passing the IP from the UI
+      const res = await fetch(`${API_URL}/api/attendance/sync`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('admin_token') || ''}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ device_ip: deviceIp })
+      });
 
-      // Simulating API call for preview purposes
-      await new Promise(resolve => setTimeout(resolve, 2500));
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.detail || data.message || 'خطا در ارتباط با دستگاه');
+      }
+
+      if (!data.success) {
+        throw new Error(data.message);
+      }
+
       setSyncStatus('success');
+      // Toast can be shown by parent component or we just let status reflect
     } catch (error) {
+      console.error(error);
       setSyncStatus('error');
     } finally {
       setIsSyncing(false);
