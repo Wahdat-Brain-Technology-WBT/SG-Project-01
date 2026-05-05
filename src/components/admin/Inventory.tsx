@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useApi } from '../../hooks/useApi';
 import toast from 'react-hot-toast';
 import { MagicInput, handleKeyboardNavigation, toEnglishDigits } from '../../utils/magicUx';
-import { API_URL } from '../../config';
+import { fetchApi } from '../../utils/apiClient';
 
 interface Product {
   id: number;
@@ -78,40 +78,15 @@ export default function Inventory({ theme, lang }: InventoryProps) {
   const handleQuickEditSave = async (id: number) => {
     setIsSaving(true);
     try {
-      const token = localStorage.getItem('admin_token');
-
       const payload = {
         current_price: Number(toEnglishDigits(quickEditData.current_price)) || 0,
         stock_quantity: Number(toEnglishDigits(quickEditData.stock_quantity)) || 0
       };
 
-      const res = await fetch(`${API_URL}/api/products/${id}`, {
+      await fetchApi(`/api/products/${id}`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
         body: JSON.stringify(payload)
       });
-
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        let errorMessage = 'Failed to update product';
-
-        if (errorData.detail) {
-          if (Array.isArray(errorData.detail)) {
-            errorMessage = "Validation Error: " + errorData.detail.map((err: any) =>
-              `'${err.loc[err.loc.length - 1]}' ${err.msg}`
-            ).join(', ');
-          } else {
-            errorMessage = errorData.detail;
-          }
-        } else if (errorData.error) {
-            errorMessage = errorData.error;
-        }
-
-        throw new Error(errorMessage);
-      }
 
       await mutate(); // Refresh SWR cache instantly
       toast.success(lang === 'en' ? 'Product updated successfully' : 'محصول با موفقیت بروزرسانی شد');
@@ -128,8 +103,6 @@ export default function Inventory({ theme, lang }: InventoryProps) {
     e.preventDefault();
     setIsAdding(true);
     try {
-      const token = localStorage.getItem('admin_token');
-
       const payload = {
         name: newProduct.name,
         product_code: newProduct.code || "N/A",
@@ -143,38 +116,10 @@ export default function Inventory({ theme, lang }: InventoryProps) {
 
       console.log("Sending Payload:", payload);
 
-      const res = await fetch(`${API_URL}/api/products`, {
+      await fetchApi(`/api/products`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
         body: JSON.stringify(payload)
       });
-
-      const contentType = res.headers.get("content-type");
-      if (contentType && contentType.includes("text/html")) {
-        throw new Error("Server returned HTML. Ensure you run 'npm run build' so the frontend hits the API on port 8000 correctly!");
-      }
-
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        let errorMessage = 'Failed to add product';
-
-        if (errorData.detail) {
-          if (Array.isArray(errorData.detail)) {
-            errorMessage = "Validation Error: " + errorData.detail.map((err: any) =>
-              `'${err.loc[err.loc.length - 1]}' ${err.msg}`
-            ).join(', ');
-          } else {
-            errorMessage = errorData.detail;
-          }
-        } else if (errorData.error) {
-            errorMessage = errorData.error;
-        }
-
-        throw new Error(errorMessage);
-      }
 
       await mutate();
       toast.success(lang === 'en' ? 'Product added successfully' : 'محصول جدید با موفقیت اضافه شد');
@@ -192,20 +137,16 @@ export default function Inventory({ theme, lang }: InventoryProps) {
     if (!deleteId) return;
     setIsDeleting(true);
     try {
-      const token = localStorage.getItem('admin_token');
-      const res = await fetch(`${API_URL}/api/products/${deleteId}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
+      await fetchApi(`/api/products/${deleteId}`, {
+        method: 'DELETE'
       });
-
-      if (!res.ok) throw new Error('Failed to delete product');
 
       await mutate();
       toast.success(lang === 'en' ? 'Product deleted successfully' : 'محصول با موفقیت حذف شد');
       setDeleteId(null);
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      toast.error(lang === 'en' ? 'Error deleting product' : 'خطا در حذف محصول');
+      toast.error(error.message || (lang === 'en' ? 'Error deleting product' : 'خطا در حذف محصول'));
     } finally {
       setIsDeleting(false);
     }

@@ -1,36 +1,24 @@
-# ==========================================
-# Critical Compatibility Patch for bcrypt/passlib
-# ==========================================
-try:
-    import bcrypt
-    import sys
-    # Fake __about__ module to satisfy passlib
-    if not hasattr(bcrypt, "__about__"):
-        from types import ModuleType
-        about = ModuleType("bcrypt.__about__")
-        about.__version__ = getattr(bcrypt, "__version__", "4.0.0")
-        bcrypt.__about__ = about
-        sys.modules["bcrypt.__about__"] = about
-except ImportError:
-    pass
-
 import os
-from google import genai
-from google.genai import types
-from fastapi import FastAPI, Depends, HTTPException, Request
-from fastapi.responses import JSONResponse, StreamingResponse
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.exceptions import RequestValidationError
-from sqlalchemy import create_engine, Column, Integer, String, Float, Text, DateTime, Date, ForeignKey, text
-from sqlalchemy.orm import declarative_base, sessionmaker, Session, relationship
-from pydantic import BaseModel
-from typing import List, Optional, Any
 import datetime
 import io
 from collections import defaultdict
-from dotenv import load_dotenv
+from typing import List, Optional, Any
 
-# IoT & Reporting Modules
+from fastapi import FastAPI, Depends, HTTPException, Request, status
+from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.exceptions import RequestValidationError
+from fastapi.security import OAuth2PasswordBearer
+from pydantic import BaseModel
+from sqlalchemy import create_engine, Column, Integer, String, Float, Text, DateTime, Date, ForeignKey, text, inspect
+from sqlalchemy.orm import declarative_base, sessionmaker, Session, relationship
+from dotenv import load_dotenv
+from google import genai
+from google.genai import types
+
+load_dotenv()
+
+# ZKTeco and Pandas Imports
 try:
     from zk import ZK, const
 except ImportError:
@@ -40,9 +28,6 @@ try:
     import pandas as pd
 except ImportError:
     pd = None
-
-# بارگذاری متغیرهای محیطی
-load_dotenv()
 
 # تنظیمات دیتابیس PostgreSQL
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:123456@localhost:5432/sheen_ghazy_erp")
@@ -58,6 +43,7 @@ if api_key:
 else:
     print("WARNING: GEMINI_API_KEY environment variable not set. AI Chatbot features will not work.")
     client = None
+
 
 # ==========================================
 # Models (جداول دیتابیس)
@@ -76,6 +62,7 @@ class Product(Base):
     createdAt = Column(DateTime, default=datetime.datetime.utcnow)
     updatedAt = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 
+
 class Ledger(Base):
     __tablename__ = "Ledgers"
     id = Column(Integer, primary_key=True, index=True)
@@ -88,19 +75,31 @@ class Ledger(Base):
     createdAt = Column(DateTime, default=datetime.datetime.utcnow)
     updatedAt = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 
+
 class Employee(Base):
     __tablename__ = "Employees"
     id = Column(Integer, primary_key=True, index=True)
-    zk_id = Column(String, nullable=True) # ID دستگاه حاضری (ZKTeco)
+    zkteco_id = Column(Integer, nullable=True, unique=True)  # ZKTeco ID Number
     full_name = Column(String, nullable=False)
-    father_name = Column(String, nullable=True, default="-") # ولد
-    province = Column(String, nullable=True, default="-") # ولایت
+    father_name = Column(String, nullable=True, default="-")  # ولد
+    province = Column(String, nullable=True, default="-")  # ولایت
     position = Column(String, nullable=False)
     salary = Column(Float, nullable=False)
     phone = Column(String)
-    hire_date = Column(Date, default=datetime.date.today) # تاریخ ثبت نام
+    hire_date = Column(Date, default=datetime.date.today)  # تاریخ ثبت نام
     createdAt = Column(DateTime, default=datetime.datetime.utcnow)
     updatedAt = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
+
+class SalaryAdvance(Base):
+    __tablename__ = "SalaryAdvances"
+    id = Column(Integer, primary_key=True, index=True)
+    amount = Column(Float, nullable=False)
+    date = Column(Date, default=datetime.date.today)
+    description = Column(String, nullable=True)
+    EmployeeId = Column(Integer, ForeignKey("Employees.id"))
+    createdAt = Column(DateTime, default=datetime.datetime.utcnow)
+
 
 class Production(Base):
     __tablename__ = "Productions"
@@ -113,6 +112,7 @@ class Production(Base):
     createdAt = Column(DateTime, default=datetime.datetime.utcnow)
     updatedAt = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 
+
 class Customer(Base):
     __tablename__ = "Customers"
     id = Column(Integer, primary_key=True, index=True)
@@ -120,39 +120,47 @@ class Customer(Base):
     whatsapp_number = Column(String, unique=True, nullable=False)
     address = Column(Text)
     total_spent = Column(Float, default=0)
+    balance = Column(Float, default=0)  # Debt or Credit balance
     createdAt = Column(DateTime, default=datetime.datetime.utcnow)
     updatedAt = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
 
 class Order(Base):
     __tablename__ = "Orders"
     id = Column(Integer, primary_key=True, index=True)
     status = Column(String, default="PENDING")
+    order_type = Column(String, default="SALE")  # SALE or RETURN
     total_amount = Column(Float, default=0)
     date = Column(DateTime, default=datetime.datetime.utcnow)
     CustomerId = Column(Integer, ForeignKey("Customers.id"))
     createdAt = Column(DateTime, default=datetime.datetime.utcnow)
     updatedAt = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 
+
 class OrderItem(Base):
     __tablename__ = "OrderItems"
     id = Column(Integer, primary_key=True, index=True)
     quantity = Column(Integer, nullable=False)
     unit_price = Column(Float, nullable=False)
+    discount = Column(Float, default=0.0)
     OrderId = Column(Integer, ForeignKey("Orders.id"))
     ProductId = Column(Integer, ForeignKey("Products.id"))
     createdAt = Column(DateTime, default=datetime.datetime.utcnow)
     updatedAt = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 
+
 class Attendance(Base):
     __tablename__ = "Attendances"
     id = Column(Integer, primary_key=True, index=True)
-    status = Column(String, nullable=False) # 'PRESENT', 'LATE', 'ABSENT'
+    status = Column(String, nullable=False)  # 'PRESENT', 'LATE', 'ABSENT'
     date = Column(String, nullable=False)
-    check_in = Column(String, nullable=True)   # Added for ZKTeco entry time
+    check_in = Column(String, nullable=True)  # Added for ZKTeco entry time
     check_out = Column(String, nullable=True)  # Added for ZKTeco exit time
+    deduction_amount = Column(Float, default=0)  # مبلغ کسر معاش در روز
     EmployeeId = Column(Integer, ForeignKey("Employees.id"))
     createdAt = Column(DateTime, default=datetime.datetime.utcnow)
     updatedAt = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
 
 class User(Base):
     __tablename__ = "Users"
@@ -163,10 +171,10 @@ class User(Base):
     createdAt = Column(DateTime, default=datetime.datetime.utcnow)
     updatedAt = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 
+
 # ==========================================
 # Schema Migrations (به‌روزرسانی خودکار دیتابیس)
 # ==========================================
-from sqlalchemy import inspect
 
 def upgrade_database_schema(engine):
     """
@@ -180,21 +188,8 @@ def upgrade_database_schema(engine):
         return
 
     with engine.connect() as conn:
-        # Check columns in Employees
-        employees_columns = [col['name'] for col in inspector.get_columns("Employees")]
-
-        # Add zk_id if missing
-        if "zk_id" not in employees_columns:
-            try:
-                print("⚠️  Adding zk_id to Employees...")
-                # use double quotes for table name and single for values to be safe in PSQL
-                conn.execute(text('ALTER TABLE "Employees" ADD COLUMN zk_id VARCHAR(255)'))
-                conn.commit()
-            except Exception as e:
-                conn.rollback()
-                print(f"Migration Error (zk_id): {e}")
-
         # Check if father_name exists in Employees
+        employees_columns = [col['name'] for col in inspector.get_columns("Employees")]
         if "father_name" not in employees_columns:
             try:
                 conn.execute(text("ALTER TABLE \"Employees\" ADD COLUMN father_name VARCHAR DEFAULT '-'"))
@@ -204,7 +199,44 @@ def upgrade_database_schema(engine):
                 conn.rollback()
                 print(f"Migration Notice (Employees): {str(e)}")
 
-        # Check if check_in exists in Attendances
+        if "zkteco_id" not in employees_columns:
+            try:
+                conn.execute(text("ALTER TABLE \"Employees\" ADD COLUMN zkteco_id INTEGER UNIQUE"))
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+                print(f"Migration Notice (zkteco_id): {str(e)}")
+
+        if inspector.has_table("Orders"):
+            orders_columns = [col['name'] for col in inspector.get_columns("Orders")]
+            if "order_type" not in orders_columns:
+                try:
+                    conn.execute(text("ALTER TABLE \"Orders\" ADD COLUMN order_type VARCHAR DEFAULT 'SALE'"))
+                    conn.commit()
+                except Exception as e:
+                    conn.rollback()
+                    print(f"Migration Notice (Orders order_type): {str(e)}")
+
+        if inspector.has_table("OrderItems"):
+            orderitems_columns = [col['name'] for col in inspector.get_columns("OrderItems")]
+            if "discount" not in orderitems_columns:
+                try:
+                    conn.execute(text("ALTER TABLE \"OrderItems\" ADD COLUMN discount FLOAT DEFAULT 0.0"))
+                    conn.commit()
+                except Exception as e:
+                    conn.rollback()
+                    print(f"Migration Notice (OrderItems discount): {str(e)}")
+
+        if inspector.has_table("Customers"):
+            customers_columns = [col['name'] for col in inspector.get_columns("Customers")]
+            if "balance" not in customers_columns:
+                try:
+                    conn.execute(text("ALTER TABLE \"Customers\" ADD COLUMN balance FLOAT DEFAULT 0.0"))
+                    conn.commit()
+                except Exception as e:
+                    conn.rollback()
+                    print(f"Migration Notice (Customers balance): {str(e)}")
+
         if inspector.has_table("Attendances"):
             attendances_columns = [col['name'] for col in inspector.get_columns("Attendances")]
             if "check_in" not in attendances_columns:
@@ -216,17 +248,27 @@ def upgrade_database_schema(engine):
                     conn.rollback()
                     print(f"Migration Notice (Attendances): {str(e)}")
 
-# اجرای مایگریشن‌ها قبل از ایجاد جداول
-upgrade_database_schema(engine)
+            if "deduction_amount" not in attendances_columns:
+                try:
+                    conn.execute(text("ALTER TABLE \"Attendances\" ADD COLUMN deduction_amount FLOAT DEFAULT 0.0"))
+                    conn.commit()
+                except Exception as e:
+                    conn.rollback()
+                    print(f"Migration Notice (deduction_amount): {str(e)}")
 
-# ساخت تمام جداول در دیتابیس
+
+# اجرای مایگریشن‌ها قبل از ایجاد جداول
+print("--- Checking Database Connection & Running Migrations ---")
 try:
+    with engine.connect() as conn:
+        print("--- Database connection SUCCESSFUL! ---")
+    upgrade_database_schema(engine)
+    # ساخت تمام جداول در دیتابیس
     Base.metadata.create_all(bind=engine)
 except Exception as e:
-    print("\n" + "="*60)
-    print("❌ ERROR: Database Connection Failed!")
-    print("It seems PostgreSQL is not running or 'sheen_ghazy_erp' database does not exist.")
-    print("="*60 + "\n")
+    print(
+        f"\n!!!! DATABASE CONNECTION ERROR !!!!\nخطا در اتصال به دیتابیس PostgreSQL: {str(e)}\nلطفاً مطمئن شوید که سرویس PostgreSQL روشن است و نام کاربری/رمز عبور صحیح است.\n")
+
 
 def init_default_admin():
     db = SessionLocal()
@@ -243,6 +285,7 @@ def init_default_admin():
     finally:
         db.close()
 
+
 try:
     from passlib.context import CryptContext
     import jwt
@@ -253,12 +296,13 @@ except ImportError:
 # تنظیمات امنیت (JWT)
 SECRET_KEY = os.getenv("JWT_SECRET_KEY", "super-secret-key-sheen-ghazy-12345")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 # One day
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # One day
 
 if CryptContext:
     pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 else:
     pwd_context = None
+
 
 def verify_password(plain_password, hashed_password):
     if pwd_context:
@@ -269,13 +313,16 @@ def verify_password(plain_password, hashed_password):
             return plain_password == hashed_password
     return plain_password == hashed_password
 
+
 def get_password_hash(password):
     if pwd_context:
         return pwd_context.hash(password)
     return password
 
+
 # Initialize admin now that hashing functions are defined
 init_default_admin()
+
 
 def create_access_token(data: dict, expires_delta: Optional[datetime.timedelta] = None):
     to_encode = data.copy()
@@ -288,6 +335,7 @@ def create_access_token(data: dict, expires_delta: Optional[datetime.timedelta] 
         encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
         return encoded_jwt
     return "fake-jwt-token"
+
 
 # ==========================================
 # FastAPI App Setup
@@ -303,28 +351,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.on_event("startup")
-async def startup_event():
-    try:
-        # Try to connect to PostgreSQL to verify the connection string
-        db = SessionLocal()
-        db.execute(text("SELECT 1"))
-        db.close()
-        print("✅ SUCCESS: Connected to PostgreSQL database successfully!")
-    except Exception as e:
-        print(f"❌ ERROR: Could not connect to PostgreSQL database.")
-        print(f"❌ EXCEPTION DETALS: {str(e)}")
-        print("👉 Please make sure PostgreSQL is installed and the service is running.")
-        print("👉 Check that your username/password and 'sheen_ghazy_erp' database exist.")
 
 # سیستم مدیریت خطاهای هوشمند
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     return JSONResponse(status_code=500, content={"error": f"خطای سرور: {str(exc)}"})
 
+
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     return JSONResponse(status_code=422, content={"error": f"خطای اطلاعات ورودی: {exc.errors()}"})
+
 
 # Dependency برای گرفتن سشن دیتابیس
 def get_db():
@@ -333,6 +370,7 @@ def get_db():
         yield db
     finally:
         db.close()
+
 
 # ==========================================
 # Gemini Tools & Configuration
@@ -347,6 +385,7 @@ def check_live_price(product_name: str) -> str:
         return f"متاسفانه محصولی با نام {product_name} یافت نشد."
     finally:
         db.close()
+
 
 def place_new_order(customer_name: str, whatsapp: str, address: str, product_name: str, quantity: int) -> str:
     """Inserts a new PENDING order into the PostgreSQL Orders and Customers tables."""
@@ -391,6 +430,7 @@ def place_new_order(customer_name: str, whatsapp: str, address: str, product_nam
     finally:
         db.close()
 
+
 tools_list = [check_live_price, place_new_order]
 
 system_instruction = """
@@ -402,6 +442,7 @@ If the user wants to buy something, intelligently ask for their Name, WhatsApp N
 Once collected, trigger the place_new_order function and reply exactly with: "سفارش شما با موفقیت ثبت شد. تیم فروش به زودی با شما در واتساپ به تماس خواهد شد."
 """
 
+
 # We will instantiate the chat inside the endpoint to maintain statelessness or handle history properly.
 
 # ==========================================
@@ -411,15 +452,18 @@ class ChatMessage(BaseModel):
     role: str
     content: str
 
+
 class ChatRequest(BaseModel):
     message: str
     history: List[ChatMessage] = []
+
 
 class ExpenseCreate(BaseModel):
     amount: float
     description: str
     department: str = "GENERAL"
     type: Optional[str] = None
+
 
 class ProductCreate(BaseModel):
     name: str
@@ -431,14 +475,22 @@ class ProductCreate(BaseModel):
     current_price: float
     stock_quantity: int = 0
 
+
 class EmployeeCreate(BaseModel):
     full_name: str
-    zk_id: Optional[str] = None
     father_name: Optional[str] = "-"
     province: Optional[str] = "-"
     position: str
     salary: float
     phone: Optional[str] = None
+    zkteco_id: Optional[int] = None
+
+
+class SalaryAdvanceCreate(BaseModel):
+    amount: float
+    date: str
+    description: Optional[str] = None
+
 
 class ProductionCreate(BaseModel):
     ProductId: int
@@ -446,18 +498,28 @@ class ProductionCreate(BaseModel):
     raw_material_used: float
     department: str = "PIPE"
 
+
 class DirectSaleItem(BaseModel):
     ProductId: int
     quantity: int
     unit_price: float
+    discount: float = 0.0
+
 
 class DirectSaleCreate(BaseModel):
-    CustomerId: int
+    CustomerId: Optional[int] = None
+    CustomerName: Optional[str] = None
+    notes: Optional[str] = None
+    received_amount: float = 0.0
+    order_type: str = "SALE"
+    admin_password: Optional[str] = None
     items: List[DirectSaleItem]
+
 
 class LoginRequest(BaseModel):
     username: str
     password: str
+
 
 class ProductUpdate(BaseModel):
     name: Optional[str] = None
@@ -467,17 +529,21 @@ class ProductUpdate(BaseModel):
     current_price: Optional[float] = None
     stock_quantity: Optional[int] = None
 
+
 class AttendanceCreate(BaseModel):
     EmployeeId: int
     status: str
     date: str
 
+
 class QuickAttendanceCreate(BaseModel):
     date: str
+
 
 class PublicOrderItem(BaseModel):
     productId: int
     quantity: int
+
 
 class PublicOrderCreate(BaseModel):
     fullName: str
@@ -485,12 +551,13 @@ class PublicOrderCreate(BaseModel):
     address: str
     items: List[PublicOrderItem]
 
+
 # ==========================================
 # API Routes (مسیرهای ارتباطی)
 # ==========================================
 
 @app.post("/api/chat")
-async def chat_endpoint(request: ChatRequest):
+def chat_endpoint(request: ChatRequest):
     try:
         config = types.GenerateContentConfig(
             system_instruction=system_instruction,
@@ -505,7 +572,8 @@ async def chat_endpoint(request: ChatRequest):
             gemini_history.append({"role": role, "parts": [{"text": msg.content}]})
 
         if not client:
-            return JSONResponse(status_code=500, content={"reply": "خطا: کلید API جمنای (GEMINI_API_KEY) در سرور تنظیم نشده است. لطفا آن را در فایل .env تنظیم کنید."})
+            return JSONResponse(status_code=500, content={
+                "reply": "خطا: کلید API جمنای (GEMINI_API_KEY) در سرور تنظیم نشده است. لطفا آن را در فایل .env تنظیم کنید."})
 
         try:
             chat = client.chats.create(
@@ -519,17 +587,20 @@ async def chat_endpoint(request: ChatRequest):
             error_str = str(api_error)
             if "404" in error_str or "NOT_FOUND" in error_str:
                 print(f"Model 404 Error caught. Returning graceful fallback. Details: {error_str}")
-                return {"reply": "متاسفانه سیستم هوش مصنوعی در حال حاضر در دسترس نیست (خطای ارتباط با سرور). لطفاً برای ثبت سفارش مستقیماً با شماره واتساپ شرکت به تماس شوید."}
+                return {
+                    "reply": "متاسفانه سیستم هوش مصنوعی در حال حاضر در دسترس نیست (خطای ارتباط با سرور). لطفاً برای ثبت سفارش مستقیماً با شماره واتساپ شرکت به تماس شوید."}
+            if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
+                return {
+                    "reply": "متاسفانه سهمیه استفاده از هوش مصنوعی پایان یافته است (خطای 429). لطفاً مدتی بعد تلاش کنید یا برای مراجعات فوری مستقیماً تماس بگیرید."}
             raise api_error
 
     except Exception as e:
         print(f"Chat Error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-from fastapi.security import OAuth2PasswordBearer
-from fastapi import status
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
+
 
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     credentials_exception = HTTPException(
@@ -538,7 +609,7 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         headers={"WWW-Authenticate": "Bearer"},
     )
     if not jwt:
-        return User(username="fallback_user", role="ADMIN") # fallback if jwt not installed
+        return User(username="fallback_user", role="ADMIN")  # fallback if jwt not installed
 
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
@@ -553,6 +624,7 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         raise credentials_exception
     return user
 
+
 @app.post("/api/auth/login")
 def login(req: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.username == req.username).first()
@@ -561,7 +633,8 @@ def login(req: LoginRequest, db: Session = Depends(get_db)):
 
     # در محیط واقعی، پسورد باید با verify_password چک شود
     # برای جلوگیری از قفل شدن شما در حال حاضر، اگر پسورد هش نشده باشد، مسقیم چک میکنیم
-    is_valid = verify_password(req.password, user.password_hash) if pwd_context else (req.password == user.password_hash)
+    is_valid = verify_password(req.password, user.password_hash) if pwd_context else (
+                req.password == user.password_hash)
 
     if not is_valid and user.password_hash != req.password:
         raise HTTPException(status_code=400, detail="نام کاربری یا رمز عبور اشتباه است")
@@ -572,9 +645,11 @@ def login(req: LoginRequest, db: Session = Depends(get_db)):
     )
     return {"token": access_token, "role": user.role}
 
+
 @app.get("/")
 def read_root():
     return {"message": "Sheen Ghazy ERP API is running on FastAPI!"}
+
 
 @app.get("/api/db-status")
 def db_status(db: Session = Depends(get_db)):
@@ -583,6 +658,7 @@ def db_status(db: Session = Depends(get_db)):
         return {"status": "connected", "database": "PostgreSQL (FastAPI)"}
     except Exception as e:
         return {"status": "error", "error": str(e)}
+
 
 @app.patch("/api/products/{id}")
 def update_product(id: int, product: ProductUpdate, db: Session = Depends(get_db)):
@@ -598,103 +674,50 @@ def update_product(id: int, product: ProductUpdate, db: Session = Depends(get_db
     db.refresh(db_product)
     return db_product
 
+
 @app.delete("/api/products/{id}")
 def delete_product(id: int, db: Session = Depends(get_db)):
     db_product = db.query(Product).filter(Product.id == id).first()
     if not db_product:
         raise HTTPException(status_code=404, detail="محصول یافت نشد")
-
-    # Handle foreign keys (Production and OrderItems)
-    db.query(Production).filter(Production.ProductId == id).delete(synchronize_session=False)
-    db.query(OrderItem).filter(OrderItem.ProductId == id).delete(synchronize_session=False)
-
     db.delete(db_product)
     db.commit()
     return {"message": "محصول با موفقیت حذف شد"}
 
-class DirectSaleCreate(BaseModel):
-    CustomerId: Optional[int] = None
-    customer_name: Optional[str] = None
-    items: List[DirectSaleItem]
-
-@app.post("/api/orders/direct")
-def create_direct_sale(sale: DirectSaleCreate, db: Session = Depends(get_db)):
-    total_amount = 0
-    items_out = []
-
-    # 1. Handle Customer
-    customer = None
-    if sale.CustomerId:
-        customer = db.query(Customer).filter(Customer.id == sale.CustomerId).first()
-    if not customer and sale.customer_name:
-        customer = db.query(Customer).filter(Customer.whatsapp_number == sale.customer_name).first()
-        if not customer:
-            customer = Customer(full_name=sale.customer_name, whatsapp_number="مشتری مرکزی: " + sale.customer_name)
-            db.add(customer)
-            db.commit()
-            db.refresh(customer)
-
-    if not customer:
-        raise HTTPException(status_code=400, detail="مشتری مشخص نشده است")
-
-    # 2. Create Order
-    new_order = Order(CustomerId=customer.id, status='COMPLETED')
-    db.add(new_order)
-    db.commit()
-    db.refresh(new_order)
-
-    # 3. Handle Items
-    for item in sale.items:
-        product = db.query(Product).filter(Product.id == item.ProductId).first()
-        if not product or product.stock_quantity < item.quantity:
-            raise HTTPException(status_code=400, detail=f"موجودی ناکافی برای محصول ID: {item.ProductId}")
-
-        product.stock_quantity -= item.quantity
-        total_amount += item.unit_price * item.quantity
-
-        order_item = OrderItem(
-            OrderId=new_order.id,
-            ProductId=product.id,
-            quantity=item.quantity,
-            unit_price=item.unit_price
-        )
-        db.add(order_item)
-
-        items_out.append({
-            "product_name": product.name,
-            "size": product.size,
-            "quantity": item.quantity,
-            "unit_price": item.unit_price,
-            "total": item.unit_price * item.quantity
-        })
-
-    new_order.total_amount = total_amount
-
-    # 4. Handle Ledger
-    db_ledger = Ledger(
-        type="INCOME",
-        amount=total_amount,
-        description=f"فروش مستقیم (فاکتور #{new_order.id}) - مشتری: {customer.full_name}",
-        department="GENERAL",
-        order_id=new_order.id
-    )
-    db.add(db_ledger)
-    db.commit()
-
-    return {
-        "success": True,
-        "order": {
-            "id": new_order.id,
-            "date": new_order.createdAt.isoformat(),
-            "customer_name": customer.full_name,
-            "total_amount": total_amount,
-            "items": items_out
-        }
-    }
 
 @app.get("/api/orders")
 def get_orders(db: Session = Depends(get_db)):
-    return db.query(Order).all()
+    orders = db.query(Order).order_by(Order.id.desc()).all()
+    result = []
+    for order in orders:
+        customer = db.query(Customer).filter(Customer.id == order.CustomerId).first()
+        items = db.query(OrderItem).filter(OrderItem.OrderId == order.id).all()
+
+        result.append({
+            "id": order.id,
+            "status": order.status,
+            "order_type": getattr(order, 'order_type', 'SALE'),
+            "total_amount": order.total_amount,
+            "date": order.date,
+            "createdAt": order.createdAt,
+            "CustomerId": order.CustomerId,
+            "Customer": {"id": customer.id, "full_name": customer.full_name,
+                         "whatsapp_number": getattr(customer, 'whatsapp_number', '')} if customer else None,
+            "items": [
+                {
+                    "id": i.id,
+                    "ProductId": i.ProductId,
+                    "quantity": i.quantity,
+                    "unit_price": i.unit_price,
+                    "discount": getattr(i, 'discount', 0),
+                    "Product": {"id": i.ProductId,
+                                "name": db.query(Product).filter(Product.id == i.ProductId).first().name if db.query(
+                                    Product).filter(Product.id == i.ProductId).first() else "Unknown"}
+                } for i in items
+            ]
+        })
+    return result
+
 
 @app.post("/api/orders/{id}/confirm")
 def confirm_order(id: int, db: Session = Depends(get_db)):
@@ -718,6 +741,7 @@ def confirm_order(id: int, db: Session = Depends(get_db)):
     db.commit()
     return order
 
+
 @app.post("/api/attendance")
 def mark_attendance(att: AttendanceCreate, db: Session = Depends(get_db)):
     time_str = datetime.datetime.now().strftime("%I:%M %p")
@@ -738,6 +762,7 @@ def mark_attendance(att: AttendanceCreate, db: Session = Depends(get_db)):
     db.refresh(db_att)
     return db_att
 
+
 @app.post("/api/attendance/quick")
 def quick_attendance(req: QuickAttendanceCreate, db: Session = Depends(get_db)):
     time_str = datetime.datetime.now().strftime("%I:%M %p")
@@ -755,107 +780,157 @@ def quick_attendance(req: QuickAttendanceCreate, db: Session = Depends(get_db)):
     db.commit()
     return {"success": True}
 
+
 class SyncRequest(BaseModel):
-    device_ip: str = "192.168.1.201"
+    device_ip: str = "192.168.50.200"
+
 
 @app.post("/api/attendance/sync")
 def sync_zkteco(req: SyncRequest = None, db: Session = Depends(get_db)):
     """
-    Actual ZKTECO ENDPOINT using `pyzk`.
-    Connects to the machine on `device_ip` (e.g. 192.168.50.200), downloads attendances and saves them.
+    Connect to ZKTeco K70 device to fetch attendance records
     """
-    device_ip = req.device_ip if req else "192.168.50.200"
+    device_ip = req.device_ip if req and req.device_ip else "192.168.50.200"
 
-    if not ZK:
-        return {"success": False, "message": "کتابخانه ZK نصب نشده است (pip install pyzk)"}
-
-    zk = ZK(device_ip, port=4370, timeout=5, password=0, force_udp=False, ommit_ping=False)
-    conn = None
+    zk_client = ZK(device_ip, port=4370, timeout=10, password=0, force_udp=False, ommit_ping=False)
 
     try:
-        conn = zk.connect()
-        conn.disable_device()
-        attendances = conn.get_attendance() # List of ZK Attendance objects
+        conn = zk_client.connect()
+        conn.disable_device()  # قفل دستگاه در حین دانلود اطلاعات
 
-        # Aggregate logic
-        # We need to find check-ins and check-outs for each user per day
-        from collections import defaultdict
+        attendances = conn.get_attendance()  # دریافت لاگ‌ها
 
-        punch_data = defaultdict(lambda: defaultdict(list))
+        conn.enable_device()
+        conn.disconnect()
 
-        for att in attendances:
-            # att.user_id = string (ZK user ID)
-            # att.timestamp = datetime object
-            uid = int(att.user_id)
-            date_str = att.timestamp.strftime("%Y-%m-%d")
-            time_str = att.timestamp.strftime("%I:%M %p")
+        print(f"Total attendance records fetched: {len(attendances) if attendances else 0}")
 
-            punch_data[date_str][uid].append(att.timestamp)
+        if not attendances:
+            return {"success": True, "message": "هیچ رکورد حاضری در دستگاه یافت نشد.", "records_added": 0}
 
         records_added = 0
+        records_updated = 0
 
-        # Process and save to database
-        for date_str, users in punch_data.items():
-            for uid, punches in users.items():
-                punches.sort()
-                check_in_time = punches[0].strftime("%I:%M %p")
-                check_out_time = punches[-1].strftime("%I:%M %p") if len(punches) > 1 else None
+        daily_records = defaultdict(lambda: defaultdict(list))
 
-                # Default logic for status
+        for att in attendances:
+            try:
+                # Strip spaces and null bytes which sometimes come from ZKTeco
+                cleaned_user_id = str(att.user_id).strip('\x00').strip()
+                emp_id = int(cleaned_user_id)
+            except ValueError:
+                print(f"Warning: Could not parse ZKTeco user_id '{att.user_id}' as int.")
+                continue
+
+            date_str = att.timestamp.strftime("%Y-%m-%d")
+            daily_records[emp_id][date_str].append(att.timestamp)
+
+        print(f"Daily records mapped for employee IDs: {list(daily_records.keys())}")
+
+        for emp_id, dates in daily_records.items():
+            emp = db.query(Employee).filter((Employee.zkteco_id == emp_id) | (Employee.id == emp_id)).first()
+            if not emp:
+                print(f"Warning: Employee with ZKTeco ID {emp_id} not found in DB.")
+                continue
+
+            # Daily salary = salary / 30
+            # Hourly salary = Daily salary / 11 (6 AM to 5 PM is 11 hours)
+            daily_salary = emp.salary / 30.0 if emp.salary else 0
+            hourly_salary = daily_salary / 11.0
+
+            for date_str, timestamps in dates.items():
+                timestamps.sort()
+
+                check_in_dt = timestamps[0]
+                check_out_dt = timestamps[-1] if len(timestamps) > 1 else None
+
+                check_in_str = check_in_dt.strftime("%I:%M %p")
+                check_out_str = check_out_dt.strftime("%I:%M %p") if check_out_dt else None
+
+                # Check lateness based on 6:00 AM shift start
                 status = "PRESENT"
-                if punches[0].time() > datetime.time(8, 30):
-                    status = "LATE"
+                deduction = 0.0
+                late_hours = 0.0
 
-                # Find employee id by matching zk_id or mapping
-                db_emp = db.query(Employee).filter(Employee.zk_id == str(uid)).first()
-                if not db_emp:
-                    db_emp = db.query(Employee).filter(Employee.id == uid).first()
+                start_shift_time = check_in_dt.replace(hour=6, minute=0, second=0)
+                end_shift_time = check_in_dt.replace(hour=17, minute=0, second=0)
 
-                if not db_emp:
-                    continue # Skip if employee entirely missing
+                if check_in_dt > start_shift_time:
+                    diff = check_in_dt - start_shift_time
+                    minutes_late = diff.total_seconds() / 60
+                    if minutes_late > 30:  # 30 min grace period
+                        status = "LATE"
+                        late_hours += minutes_late / 60.0
 
-                matched_emp_id = db_emp.id
+                if check_out_dt and check_out_dt < end_shift_time:
+                    diff2 = end_shift_time - check_out_dt
+                    minutes_early = diff2.total_seconds() / 60
+                    late_hours += minutes_early / 60.0
+                elif not check_out_dt:
+                    # No check out yet! But maybe they just arrived.
+                    # We should check if it's the end of day before deducting.
+                    # If this is past dates, then penalize
+                    if (datetime.datetime.now() - check_in_dt).days > 0:
+                        # missed checking out yesterday
+                        diff2 = end_shift_time - check_in_dt  # Only checked in
+                        minutes_early = max(0, diff2.total_seconds() / 60)
+                        late_hours += minutes_early / 60.0
+
+                deduction = late_hours * hourly_salary
 
                 db_att = db.query(Attendance).filter(
-                    Attendance.EmployeeId == matched_emp_id,
+                    Attendance.EmployeeId == emp.id,
                     Attendance.date == date_str
                 ).first()
 
                 if db_att:
-                    db_att.check_in = check_in_time
-                    if check_out_time:
-                        db_att.check_out = check_out_time
-                    db_att.status = status
+                    updated = False
+                    if not db_att.check_in or db_att.check_in != check_in_str:
+                        db_att.check_in = check_in_str
+                        updated = True
+                    if check_out_str and (not db_att.check_out or db_att.check_out != check_out_str):
+                        db_att.check_out = check_out_str
+                        updated = True
+
+                    if db_att.status in ["ABSENT", "PRESENT"] and status == "LATE":
+                        db_att.status = status
+                        updated = True
+
+                    if deduction > 0 and db_att.deduction_amount != deduction:
+                        db_att.deduction_amount = deduction
+                        updated = True
+
+                    if updated:
+                        records_updated += 1
                 else:
                     new_att = Attendance(
-                        EmployeeId=matched_emp_id,
+                        EmployeeId=emp.id,
                         date=date_str,
-                        check_in=check_in_time,
-                        check_out=check_out_time,
-                        status=status
+                        check_in=check_in_str,
+                        check_out=check_out_str,
+                        status=status,
+                        deduction_amount=deduction
                     )
                     db.add(new_att)
-
-                records_added += 1
+                    records_added += 1
 
         db.commit()
-        conn.enable_device()
 
-        return {
-            "success": True,
-            "message": f"ارتباط با دستگاه الزمان 192.168.50.200 برقرار شد و اطلاعات بروز شد.",
-            "records_added": records_added
-        }
+        msg = f"همگام‌سازی با موفقیت انجام شد. ({records_added} ورودی جدید، {records_updated} بروزرسانی)"
+        if records_added == 0 and records_updated == 0:
+            return {"success": True, "message": "عملیات موفق اما اطلاعات جدیدی یافت نشد."}
+        return {"success": True, "message": msg, "records_added": records_added}
+
     except Exception as e:
-        return {"success": False, "message": f"خطا در ارتباط با دستگاه ZKTeco: {str(e)}"}
-    finally:
-        if conn:
-            conn.disconnect()
+        db.rollback()
+        raise HTTPException(status_code=400, detail=f"ارتباط با دستگاه ناموفق بود: {str(e)}")
+
 
 @app.get("/api/attendance/report")
 def export_attendance_report(month: str = "current", db: Session = Depends(get_db)):
     if not pd:
-        raise HTTPException(status_code=500, detail="Pandas library not installed. Please run: pip install pandas openpyxl")
+        raise HTTPException(status_code=500,
+                            detail="Pandas library not installed. Please run: pip install pandas openpyxl")
 
     # Get attendance via join to grab employee full names
     attendances = db.query(Attendance, Employee).join(Employee, Attendance.EmployeeId == Employee.id).all()
@@ -868,39 +943,79 @@ def export_attendance_report(month: str = "current", db: Session = Depends(get_d
         # Generate mapping row
         data.append({
             "ID کارمند": emp.id,
+            "ID دستگاه حاضری": emp.zkteco_id or "ثبت نشده",
             "نام سیستم": emp.full_name,
             "ولد": emp.father_name or "-",
             "ولایت": emp.province or "-",
             "وظیفه": emp.position,
+            "معاش ماهانه": emp.salary,
             "تاریخ استخدام": emp.hire_date,
             "تاریخ حاضری": att.date,
             "ساعت ورود": att.check_in or "---",
             "ساعت خروج": att.check_out or "---",
-            "وضعیت": att.status
+            "وضعیت": att.status,
+            "مبلغ کسر (AFN)": att.deduction_amount if att.deduction_amount else 0
+
         })
 
     df = pd.DataFrame(data)
 
     # ADVANCED REPORT REQUIREMENT: Grouping logically by Employee, then sorted by Date
-    df = df.sort_values(by=["نام کامل", "تاریخ"])
+    df = df.sort_values(by=["نام سیستم", "تاریخ حاضری"])
+
+    # Fetch all advances for this month
+    advances_data = db.query(SalaryAdvance, Employee).join(Employee, SalaryAdvance.EmployeeId == Employee.id).all()
+
+    summary_data = {}
+    for att, emp in attendances:
+        if emp.id not in summary_data:
+            summary_data[emp.id] = {
+                "ID": emp.id,
+                "ZKTeco ID": emp.zkteco_id or "-",
+                "نام سیستم": emp.full_name,
+                "معاش ماهانه": float(emp.salary),
+                "تعداد روزهای حاضر": 0,
+                "تعداد روزهای غایب": 0,
+                "مجموع کسر از بابت تاخیر/غیابت": 0.0,
+                "مجموع مساعده گرفته شده": 0.0,
+            }
+
+        if att.status in ["PRESENT", "LATE"]:
+            summary_data[emp.id]["تعداد روزهای حاضر"] += 1
+        elif att.status == "ABSENT":
+            summary_data[emp.id]["تعداد روزهای غایب"] += 1
+
+        summary_data[emp.id]["مجموع کسر از بابت تاخیر/غیابت"] += float(att.deduction_amount or 0)
+
+    for adv, emp in advances_data:
+        if emp.id in summary_data:
+            summary_data[emp.id]["مجموع مساعده گرفته شده"] += float(adv.amount)
+
+    for sid, sdata in summary_data.items():
+        sdata["قابض (باقیمانده معاش)"] = sdata["معاش ماهانه"] - sdata["مجموع کسر از بابت تاخیر/غیابت"] - sdata[
+            "مجموع مساعده گرفته شده"]
+
+    df_summary = pd.DataFrame(list(summary_data.values()))
 
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df_summary.to_excel(writer, index=False, sheet_name="خلاصه معاشات", freeze_panes=(1, 0))
         df.to_excel(writer, index=False, sheet_name="راپور حاضری", freeze_panes=(1, 0))
 
         # Apply strict column widths to make it highly organized
-        worksheet = writer.sheets["راپور حاضری"]
-        for col in worksheet.columns:
-            max_length = 0
-            column = col[0].column_letter
-            for cell in col:
-                try:
-                    if len(str(cell.value)) > max_length:
-                        max_length = len(str(cell.value))
-                except:
-                    pass
-            adjusted_width = (max_length + 2)
-            worksheet.column_dimensions[column].width = adjusted_width
+        for sheet_name in ["خلاصه معاشات", "راپور حاضری"]:
+            worksheet = writer.sheets[sheet_name]
+            for col in worksheet.columns:
+                max_length = 0
+                column = col[0].column_letter
+                for cell in col:
+                    try:
+                        if len(str(cell.value)) > max_length:
+                            max_length = len(str(cell.value))
+                    except:
+                        pass
+                adjusted_width = (max_length + 2)
+                worksheet.column_dimensions[column].width = adjusted_width
 
     output.seek(0)
 
@@ -912,6 +1027,7 @@ def export_attendance_report(month: str = "current", db: Session = Depends(get_d
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers=headers
     )
+
 
 @app.post("/api/public/orders")
 def create_public_order(order_req: PublicOrderCreate, db: Session = Depends(get_db)):
@@ -942,11 +1058,13 @@ def create_public_order(order_req: PublicOrderCreate, db: Session = Depends(get_
     db.commit()
     return {"success": True, "orderId": new_order.id}
 
+
 # --- Products ---
 @app.get("/api/products")
 @app.get("/api/public/products")
 def get_products(db: Session = Depends(get_db)):
     return db.query(Product).all()
+
 
 @app.post("/api/products")
 def create_product(product: ProductCreate, db: Session = Depends(get_db)):
@@ -956,10 +1074,12 @@ def create_product(product: ProductCreate, db: Session = Depends(get_db)):
     db.refresh(db_product)
     return db_product
 
+
 # --- Ledger (مصارف و درآمدها) ---
 @app.get("/api/ledger")
 def get_ledger(db: Session = Depends(get_db)):
     return db.query(Ledger).order_by(Ledger.date.desc()).limit(200).all()
+
 
 @app.post("/api/ledger")
 def create_ledger(expense: ExpenseCreate, db: Session = Depends(get_db)):
@@ -974,6 +1094,7 @@ def create_ledger(expense: ExpenseCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(db_ledger)
     return db_ledger
+
 
 # --- Employees (کارمندان) ---
 @app.get("/api/employees")
@@ -998,18 +1119,66 @@ def get_employees(db: Session = Depends(get_db)):
         results.append(emp_dict)
     return results
 
+
 @app.post("/api/employees")
 def create_employee(emp: EmployeeCreate, db: Session = Depends(get_db)):
-    db_emp = Employee(**emp.model_dump(exclude_unset=True))
-    db.add(db_emp)
+    print(f"--- Reached create_employee with data: {emp.model_dump()} ---")
+    try:
+        db_emp = Employee(**emp.model_dump(exclude_unset=True))
+        db.add(db_emp)
+        db.commit()
+        db.refresh(db_emp)
+        print(f"--- Successfully created employee with ID: {db_emp.id} ---")
+        return db_emp
+    except Exception as e:
+        db.rollback()
+        print(f"--- Error creating employee: {str(e)} ---")
+        raise HTTPException(status_code=400,
+                            detail=f"خطا در ذخیره اطلاعات (شاید ID دستگاه حاضری یا نام تکراری باشد): {str(e)}")
+
+
+@app.delete("/api/employees/{emp_id}")
+def delete_employee(emp_id: int, db: Session = Depends(get_db)):
+    emp = db.query(Employee).filter(Employee.id == emp_id).first()
+    if not emp:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    # Delete associated records FIRST to avoid foreign key constraints
+    db.query(Attendance).filter(Attendance.EmployeeId == emp_id).delete()
+
+    db.delete(emp)
     db.commit()
-    db.refresh(db_emp)
-    return db_emp
+    return {"success": True, "message": "Employee deleted"}
+
+
+@app.post("/api/employees/{emp_id}/advances")
+def create_salary_advance(emp_id: int, advance: SalaryAdvanceCreate, db: Session = Depends(get_db)):
+    emp = db.query(Employee).filter(Employee.id == emp_id).first()
+    if not emp:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    db_adv = SalaryAdvance(
+        EmployeeId=emp_id,
+        amount=advance.amount,
+        date=advance.date,
+        description=advance.description
+    )
+    db.add(db_adv)
+    db.commit()
+    db.refresh(db_adv)
+    return db_adv
+
+
+@app.get("/api/employees/{emp_id}/advances")
+def get_salary_advances(emp_id: int, db: Session = Depends(get_db)):
+    return db.query(SalaryAdvance).filter(SalaryAdvance.EmployeeId == emp_id).order_by(SalaryAdvance.date.desc()).all()
+
 
 # --- Production (تولیدات) ---
 @app.get("/api/production")
 def get_production(db: Session = Depends(get_db)):
     return db.query(Production).order_by(Production.date.desc()).all()
+
 
 @app.post("/api/production")
 def create_production(prod: ProductionCreate, db: Session = Depends(get_db)):
@@ -1029,58 +1198,252 @@ def create_production(prod: ProductionCreate, db: Session = Depends(get_db)):
     db.refresh(db_prod)
     return db_prod
 
+
 # --- Customers ---
 @app.get("/api/customers")
 def get_customers(db: Session = Depends(get_db)):
     return db.query(Customer).all()
 
+
 @app.post("/api/orders/direct")
 def create_direct_sale(sale: DirectSaleCreate, db: Session = Depends(get_db)):
     total_amount = 0
+    total_discount = 0
+
+    # Calculate totals & stock adjust
     for item in sale.items:
         product = db.query(Product).filter(Product.id == item.ProductId).first()
-        if not product or product.stock_quantity < item.quantity:
+        if not product:
+            raise HTTPException(status_code=400, detail=f"محصول یافت نشد: {item.ProductId}")
+
+        if sale.order_type == "SALE" and product.stock_quantity < item.quantity:
             raise HTTPException(status_code=400, detail=f"موجودی ناکافی برای محصول {item.ProductId}")
 
-        product.stock_quantity -= item.quantity
-        total_amount += item.unit_price * item.quantity
+        line_total = item.unit_price * item.quantity
+        line_discount = line_total * (item.discount / 100.0)
+        total_amount += (line_total - line_discount)
+        total_discount += line_discount
 
-    db_ledger = Ledger(
-        type="INCOME",
-        amount=total_amount,
-        description="فروش مستقیم",
-        department="GENERAL",
+    # 1. Provide a dummy customer if none selected (for the notes/name info)
+    cust_id = sale.CustomerId
+    if not cust_id and sale.CustomerName:
+        # Check if dummy customer exists or create one
+        dummy = db.query(Customer).filter(Customer.full_name == sale.CustomerName).first()
+        if not dummy:
+            dummy = Customer(full_name=sale.CustomerName, whatsapp_number="000")
+            db.add(dummy)
+            db.flush()
+        cust_id = dummy.id
+
+    # 2. Create Order
+    new_order = Order(
+        status="COMPLETED",
+        order_type=sale.order_type,
+        total_amount=total_amount,
+        CustomerId=cust_id,
         date=datetime.datetime.utcnow()
     )
-    db.add(db_ledger)
+    db.add(new_order)
+    db.flush()  # To get new_order.id
 
-    customer = db.query(Customer).filter(Customer.id == sale.CustomerId).first()
-    if customer:
-        customer.total_spent += total_amount
+    # 3. Create Items and update stock
+    for item in sale.items:
+        product = db.query(Product).filter(Product.id == item.ProductId).first()
+
+        if sale.order_type == "RETURN":
+            product.stock_quantity += item.quantity
+        else:
+            product.stock_quantity -= item.quantity
+
+        db_item = OrderItem(
+            quantity=item.quantity,
+            unit_price=item.unit_price,
+            OrderId=new_order.id,
+            ProductId=item.ProductId
+        )
+        if hasattr(OrderItem, 'discount'):
+            db_item.discount = item.discount
+        db.add(db_item)
+
+    # 4. Add ledger (income for sale, expense for return refund)
+    if sale.received_amount > 0:
+        if sale.order_type == "RETURN":
+            db_ledger_expense = Ledger(
+                type="EXPENSE",
+                amount=sale.received_amount,
+                description=f"پرداخت نقدی بابت مستردات بیل #{new_order.id}" + (
+                    f" - {sale.notes}" if sale.notes else ""),
+                department="GENERAL",
+                date=datetime.datetime.utcnow(),
+                order_id=new_order.id
+            )
+            db.add(db_ledger_expense)
+        else:
+            db_ledger_income = Ledger(
+                type="INCOME",
+                amount=sale.received_amount,
+                description=f"دریافت نقدی بابت بیل #{new_order.id}" + (f" - {sale.notes}" if sale.notes else ""),
+                department="GENERAL",
+                date=datetime.datetime.utcnow(),
+                order_id=new_order.id
+            )
+            db.add(db_ledger_income)
+
+    # 5. Update Customer Balance (Debt)
+    if cust_id:
+        customer = db.query(Customer).filter(Customer.id == cust_id).first()
+        if customer:
+            if sale.order_type == "RETURN":
+                refund_balance = total_amount - sale.received_amount
+                # It means we owe them total_amount, we paid received_amount, remaining we owe is deducted from their total debt
+                customer.balance = getattr(customer, "balance", 0.0) - refund_balance
+            else:
+                debt = total_amount - sale.received_amount
+                # add the debt to total_spent (or balance if it exists)
+                customer.total_spent = getattr(customer, "total_spent", 0.0) + debt
+                customer.balance = getattr(customer, "balance", 0.0) + debt
 
     db.commit()
-    return {"success": True, "total_amount": total_amount}
+    return {"success": True, "total_amount": total_amount, "order_id": new_order.id}
 
-import os
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
 
-if os.path.exists("dist") and os.path.isdir("dist"):
-    # Serve assets folder specifically
-    app.mount("/assets", StaticFiles(directory="dist/assets"), name="assets")
+@app.put("/api/orders/{order_id}")
+def update_order(order_id: int, sale: DirectSaleCreate, db: Session = Depends(get_db),
+                 current_user: User = Depends(get_current_user)):
+    # 1. Authorize Admin Edit
+    if current_user.role != "ADMIN":
+        admin = db.query(User).filter(User.role == "ADMIN").first()
+        if admin and sale.admin_password:
+            is_valid = verify_password(sale.admin_password, admin.password_hash) if pwd_context else (
+                        sale.admin_password == admin.password_hash)
+            if not is_valid and admin.password_hash != sale.admin_password:
+                raise HTTPException(status_code=403, detail="رمز عبور مقام صلاحیت‌دار (ریس شرکت) اشتباه است")
+        elif admin:
+            raise HTTPException(status_code=403,
+                                detail="برای ویرایش بیل مستردات، تاییدیه مقام صلاحیت‌دار (رمز عبور ریس شرکت) الزامی است")
 
-    # Simple Fallback for React Router
-    @app.get("/{full_path:path}")
-    async def serve_frontend(full_path: str):
-        if full_path.startswith("api/"):
-            raise HTTPException(status_code=404, detail="API route not found")
+    order = db.query(Order).filter(Order.id == order_id).first()
+    if not order:
+        raise HTTPException(status_code=404, detail="بیل یافت نشد")
 
-        file_path = os.path.join("dist", full_path)
-        if os.path.exists(file_path) and os.path.isfile(file_path):
-            return FileResponse(file_path)
+    # 2. Revert previous ledger and customer balance
+    old_ledgers = db.query(Ledger).filter(Ledger.order_id == order_id).all()
+    old_received = sum(l.amount for l in old_ledgers)
+    old_total = order.total_amount
 
-        return FileResponse("dist/index.html")
+    if order.CustomerId:
+        old_customer = db.query(Customer).filter(Customer.id == order.CustomerId).first()
+        if old_customer:
+            # Reverse previous operations
+            if order.order_type == "RETURN":
+                old_refund_balance = old_total - old_received
+                old_customer.balance = getattr(old_customer, "balance", 0.0) + old_refund_balance
+            else:
+                old_debt = old_total - old_received
+                old_customer.total_spent = getattr(old_customer, "total_spent", 0.0) - old_debt
+                old_customer.balance = getattr(old_customer, "balance", 0.0) - old_debt
+
+    for old_l in old_ledgers:
+        db.delete(old_l)
+
+    # 3. Revert old stock based on old items
+    old_items = db.query(OrderItem).filter(OrderItem.OrderId == order_id).all()
+    for old_item in old_items:
+        prod = db.query(Product).filter(Product.id == old_item.ProductId).first()
+        if prod:
+            if order.order_type == "RETURN":
+                prod.stock_quantity -= old_item.quantity
+            else:
+                prod.stock_quantity += old_item.quantity
+        db.delete(old_item)
+
+    db.flush()
+
+    total_amount = 0
+    total_discount = 0
+
+    for item in sale.items:
+        product = db.query(Product).filter(Product.id == item.ProductId).first()
+        if not product:
+            raise HTTPException(status_code=404, detail="محصول یافت نشد")
+        if sale.order_type == "SALE" and product.stock_quantity < item.quantity:
+            raise HTTPException(status_code=400, detail=f"موجودی ناکافی برای محصول {item.ProductId}")
+
+        line_total = item.unit_price * item.quantity
+        line_discount = line_total * (item.discount / 100.0)
+        total_amount += (line_total - line_discount)
+        total_discount += line_discount
+
+        if sale.order_type == "RETURN":
+            product.stock_quantity += item.quantity
+        else:
+            product.stock_quantity -= item.quantity
+
+        db_item = OrderItem(
+            quantity=item.quantity,
+            unit_price=item.unit_price,
+            OrderId=order.id,
+            ProductId=item.ProductId
+        )
+        if hasattr(OrderItem, 'discount'):
+            db_item.discount = item.discount
+        db.add(db_item)
+
+    order.total_amount = total_amount
+    order.order_type = sale.order_type
+
+    if sale.CustomerId:
+        order.CustomerId = sale.CustomerId
+    elif sale.CustomerName:
+        dummy = db.query(Customer).filter(Customer.full_name == sale.CustomerName).first()
+        if not dummy:
+            dummy = Customer(full_name=sale.CustomerName, whatsapp_number="000")
+            db.add(dummy)
+            db.flush()
+        order.CustomerId = dummy.id
+
+    # 4. Insert new Ledger entries
+    if sale.received_amount > 0:
+        if sale.order_type == "RETURN":
+            db_ledger_expense = Ledger(
+                type="EXPENSE",
+                amount=sale.received_amount,
+                description=f"پرداخت نقدی بابت ویرایش مستردات بیل #{order.id}" + (
+                    f" - {sale.notes}" if sale.notes else ""),
+                department="GENERAL",
+                date=datetime.datetime.utcnow(),
+                order_id=order.id
+            )
+            db.add(db_ledger_expense)
+        else:
+            db_ledger_income = Ledger(
+                type="INCOME",
+                amount=sale.received_amount,
+                description=f"دریافت نقدی بابت ویرایش فاکتور #{order.id}" + (f" - {sale.notes}" if sale.notes else ""),
+                department="GENERAL",
+                date=datetime.datetime.utcnow(),
+                order_id=order.id
+            )
+            db.add(db_ledger_income)
+
+    # 5. Apply new debts to customer
+    if order.CustomerId:
+        new_customer = db.query(Customer).filter(Customer.id == order.CustomerId).first()
+        if new_customer:
+            if sale.order_type == "RETURN":
+                new_refund_balance = total_amount - sale.received_amount
+                new_customer.balance = getattr(new_customer, "balance", 0.0) - new_refund_balance
+            else:
+                new_debt = total_amount - sale.received_amount
+                new_customer.total_spent = getattr(new_customer, "total_spent", 0.0) + new_debt
+                new_customer.balance = getattr(new_customer, "balance", 0.0) + new_debt
+
+    db.commit()
+    return {"success": True, "message": "بیل با موفقیت ویرایش و حسابات تنظیم شد", "order_id": order.id}
+
 
 if __name__ == "__main__":
     import uvicorn
+
+    # تغییر هاست به 0.0.0.0 تا بتوان از دستگاه‌های دیگر (تلفن همراه، کامپیوترهای شبکه) به آن متصل شد.
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

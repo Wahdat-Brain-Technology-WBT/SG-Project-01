@@ -3,15 +3,17 @@ import {
   Users, UserPlus, Search,
   CheckCircle, XCircle, DollarSign, Phone,
   MoreVertical, Shield, Briefcase, Calendar, Download,
-  Fingerprint, RotateCcw, Clock
+  Fingerprint, RotateCcw, Clock, Plus, Wallet, FileText
 } from 'lucide-react';
 import { API_URL } from '../../config';
+import { toEnglishDigits } from '../../utils/magicUx';
 
 interface EmployeesProps {
   employees: any[];
   onAddEmployee: () => void;
   onAttendance: (employeeId: number, status: 'PRESENT' | 'ABSENT') => Promise<void>;
   onQuickAttendance: () => Promise<void>;
+  onDeleteEmployee: (id: number) => Promise<void>;
   lang: 'dr' | 'ps' | 'en';
   t: any;
   theme: 'light' | 'dark';
@@ -33,6 +35,7 @@ export default function Employees({
   onAddEmployee,
   onAttendance,
   onQuickAttendance,
+  onDeleteEmployee,
   lang,
   t,
   theme
@@ -41,8 +44,14 @@ export default function Employees({
   const [isSyncing, setIsSyncing] = useState(false);
   const [toast, setToast] = useState<{message: string, type: 'success'|'error'} | null>(null);
 
-  // Note: For Next.js, using standard Date string
-  const todayStr = new Date().toISOString().split('T')[0];
+  const [selectedEmpForSalary, setSelectedEmpForSalary] = useState<any>(null);
+  const [advanceAmount, setAdvanceAmount] = useState('');
+  const [advanceDesc, setAdvanceDesc] = useState('');
+  const [isSavingAdvance, setIsSavingAdvance] = useState(false);
+
+  // A safer todayStr that respects the user's local timezone (Kabul time)
+  const today = new Date();
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
   const filteredEmployees = employees.filter(e =>
     e.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -53,31 +62,77 @@ export default function Employees({
     window.open(`${API_URL}/api/attendance/report?month=current`, '_blank');
   };
 
+  const fetchWithTimeout = async (url: string, options: any = {}, timeout = 15000) => {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), timeout);
+    try {
+      const response = await fetch(url, { ...options, signal: controller.signal });
+      clearTimeout(id);
+      return response;
+    } catch (err: any) {
+      clearTimeout(id);
+      if (err.name === 'AbortError') throw new Error('Request timed out - check server/firewall');
+      throw err;
+    }
+  };
+
   const handleZkSync = async () => {
     setIsSyncing(true);
     setToast(null);
     try {
-      const res = await fetch(`${API_URL}/api/attendance/sync`, {
+      const res = await fetchWithTimeout(`${API_URL}/api/attendance/sync`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('admin_token') || ''}`,
           'Content-Type': 'application/json'
-        }
+        },
+        body: JSON.stringify({ device_ip: '192.168.50.200' })
       });
 
-      const resData = await res.json();
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || data.error || 'خطا در ارتباط با دستگاه');
 
-      if (!res.ok || !resData.success) {
-        throw new Error(resData?.message || 'Sync failed');
-      }
-
-      setToast({ message: resData.message || 'همگام‌سازی ZKTeco با موفقیت انجام شد.', type: 'success' });
-      setTimeout(() => window.location.reload(), 2000);
+      setToast({ message: data.message || 'اعلومات دستگاه موفقانه همگام‌سازی شد.', type: 'success' });
+      await onQuickAttendance(); // Ensure onQuickAttendance is called correctly
     } catch (err: any) {
-      setToast({ message: err.message || 'خطا در ارتباط با دستگاه ZKTeco', type: 'error' });
-      setTimeout(() => setToast(null), 5000);
+      setToast({ message: err.message || 'ارتباط با دستگاه قطع شده است.', type: 'error' });
+      setTimeout(() => setToast(null), 4000);
     } finally {
       setIsSyncing(false);
+    }
+  };
+
+  const handleSaveAdvance = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedEmpForSalary || !advanceAmount) return;
+
+    setIsSavingAdvance(true);
+    try {
+      const amt = parseFloat(toEnglishDigits(advanceAmount));
+      const res = await fetchWithTimeout(`${API_URL}/api/employees/${selectedEmpForSalary.id}/advances`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('admin_token') || ''}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          amount: amt,
+          date: todayStr,
+          description: advanceDesc || 'مساعده (پیشکی)'
+        })
+      });
+
+      if (!res.ok) throw new Error('خطا در ثبت مساعده');
+
+      setToast({ message: 'مساعده موفقانه ثبت شد.', type: 'success' });
+      setSelectedEmpForSalary(null);
+      setAdvanceAmount('');
+      setAdvanceDesc('');
+      await onQuickAttendance(); // Refresh table
+    } catch (err: any) {
+      setToast({ message: err.message || 'خطا', type: 'error' });
+    } finally {
+      setIsSavingAdvance(false);
     }
   };
 
@@ -171,7 +226,7 @@ export default function Employees({
             <div>
               <p className="text-[11px] font-black text-gray-500 dark:text-gray-400 uppercase tracking-widest">حاضر در کارخانه</p>
               <p className="text-2xl font-black text-emerald-600 dark:text-emerald-400 font-mono">
-                {formatNumber(employees.filter(e => e.Attendances?.some((a: any) => a.date === todayStr && a.status === 'PRESENT')).length)}
+                {formatNumber(employees.filter(e => e.Attendances?.some((a: any) => a.date === todayStr && (a.status === 'PRESENT' || a.status === 'LATE'))).length)}
               </p>
             </div>
           </div>
@@ -245,6 +300,7 @@ export default function Employees({
                           </div>
                           <span className="text-[11px] font-mono text-gray-500">
                             ID: <span className="text-blue-500 font-bold">{formatNumber(e.id)}</span>
+                            {e.zkteco_id ? ` | ZK: ${formatNumber(e.zkteco_id)}` : ''}
                           </span>
                         </div>
                       </td>
@@ -310,9 +366,16 @@ export default function Employees({
 
                       <td className="px-6 py-5 text-end">
                         <div className="flex items-center justify-end gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button onClick={() => onDeleteEmployee(e.id)} className="text-[12px] font-black text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-500/10 px-3 py-1.5 rounded-lg border border-red-500/20 hover:bg-red-500 hover:text-white transition-colors" dir="ltr" title="حذف کارمند">
+                            حذف
+                          </button>
+                          <button onClick={() => setSelectedEmpForSalary(e)} className="text-[12px] font-black text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 px-3 py-1.5 rounded-lg border border-emerald-500/20 hover:bg-emerald-500 hover:text-white transition-colors flex items-center gap-1" dir="ltr">
+                            <Wallet size={14}/> حساب/مساعده
+                          </button>
                           <button className="text-[12px] font-black text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-500/10 px-3 py-1.5 rounded-lg border border-blue-500/20 hover:bg-blue-500 hover:text-white transition-colors" dir="ltr">
                             {formatNumber(e.salary)} AFN
                           </button>
+
                           <button className="p-2 text-gray-400 hover:text-blue-500 bg-gray-50 dark:bg-slate-800 rounded-xl transition-all border border-transparent hover:border-blue-500/30">
                             <MoreVertical size={16} />
                           </button>
@@ -326,6 +389,48 @@ export default function Employees({
           </table>
         </div>
       </div>
+
+      {selectedEmpForSalary && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+          <div className="bg-white dark:bg-slate-900 rounded-[28px] shadow-2xl w-full max-w-lg overflow-hidden border dark:border-slate-800 animate-in zoom-in duration-300">
+            <div className="flex justify-between items-center p-6 border-b dark:border-slate-800 bg-gray-50/50 dark:bg-slate-800/50">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-emerald-600 rounded-2xl flex items-center justify-center text-white shadow-xl shadow-emerald-600/30">
+                  <Wallet size={24} />
+                </div>
+                <div>
+                  <h3 className="font-black text-xl text-gray-800 dark:text-white">مدیریت مالی {selectedEmpForSalary.full_name}</h3>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 flex gap-2"><span>معاش اصلی: {formatNumber(selectedEmpForSalary.salary)} افغانی</span></p>
+                </div>
+              </div>
+              <button onClick={() => setSelectedEmpForSalary(null)} className="p-3 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-2xl transition-all text-gray-400 hover:text-red-500">
+                <Plus className="rotate-45" size={24} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveAdvance} className="p-6 space-y-5">
+              <div className="bg-emerald-50 dark:bg-emerald-900/10 p-4 rounded-xl border border-emerald-100 dark:border-emerald-900/30">
+                <h4 className="text-sm font-black text-emerald-800 dark:text-emerald-400 flex items-center gap-2 mb-2"><FileText size={16}/> ثبت مساعده (پیش پرداخت)</h4>
+                <div className="grid grid-cols-1 gap-4 mt-4">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">مبلغ پرداختی (افغانی)</label>
+                    <input required type="text" inputMode="decimal" value={advanceAmount} onChange={e => setAdvanceAmount(toEnglishDigits(e.target.value))} className="w-full border-2 border-white dark:border-slate-700 dark:bg-slate-800 dark:text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-emerald-500 transition-all font-black" placeholder="مثال: 1000"/>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">شرح (اختیاری)</label>
+                    <input type="text" value={advanceDesc} onChange={e => setAdvanceDesc(e.target.value)} className="w-full border-2 border-white dark:border-slate-700 dark:bg-slate-800 dark:text-white rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-emerald-500 transition-all font-medium" placeholder="مثال: مساعده هفته اول"/>
+                  </div>
+                </div>
+              </div>
+
+              <button type="submit" disabled={isSavingAdvance} className="w-full bg-emerald-600 text-white font-black rounded-xl px-6 py-4 hover:bg-emerald-700 transition-all shadow-xl shadow-emerald-600/20 active:scale-95 disabled:opacity-50">
+                {isSavingAdvance ? 'در حال ثبت...' : 'ثبت مساعده'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

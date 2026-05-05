@@ -17,7 +17,7 @@ interface LedgerProps {
   isSaving: boolean;
   lang: 'dr' | 'ps' | 'en';
   t: any;
-  theme: 'light' | 'dark';
+  theme: string;
   formatJalaliDateOnly: (date: string, lang: any, forceEnglish?: boolean) => string;
   chartData: any[];
   todayExpenses: number;
@@ -50,9 +50,12 @@ export default function Ledger({
   };
 
   const filteredLedger = ledger.filter(l => {
-    const matchesDept = ledgerFilter === 'ALL' || l.department === ledgerFilter;
-    const matchesSearch = l.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         l.amount.toString().includes(searchTerm);
+    const dept = l.department || 'GENERAL';
+    const matchesDept = ledgerFilter === 'ALL' || dept === ledgerFilter;
+    const desc = l.description || '';
+    const amountStr = l.amount ? l.amount.toString() : '0';
+    const matchesSearch = desc.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         amountStr.includes(searchTerm);
     return matchesDept && matchesSearch;
   });
 
@@ -68,7 +71,7 @@ export default function Ledger({
     exportToCSV('ledger_report', [headers, ...data]);
   };
 
-  const chartColors = theme === 'dark' ? {
+  const chartColors = (theme === 'dark' || theme === 'midnight') ? {
     text: '#94a3b8',
     grid: '#1e293b',
     tooltipBg: '#0f172a',
@@ -195,7 +198,7 @@ export default function Ledger({
         <div className="p-6 border-b dark:border-slate-800 flex flex-col lg:flex-row justify-between items-center gap-6 bg-gray-50/30 dark:bg-slate-800/20">
           <div className="flex gap-2 overflow-x-auto pb-2 lg:pb-0 w-full lg:w-auto">
             {['ALL', 'PIPE', 'LATHE', 'THREADING', 'GENERAL'].map(dept => (
-              <button 
+              <button
                 key={dept}
                 onClick={() => setLedgerFilter(dept)}
                 className={`px-5 py-2.5 rounded-xl text-xs font-black whitespace-nowrap transition-all ${ledgerFilter === dept ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' : 'bg-white dark:bg-slate-800 text-gray-500 dark:text-gray-400 border dark:border-slate-700 hover:bg-gray-50'}`}
@@ -206,9 +209,9 @@ export default function Ledger({
           </div>
           <div className="relative w-full lg:w-72">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-            <input 
-              type="text" 
-              placeholder="جستجو در لیست..." 
+            <input
+              type="text"
+              placeholder="جستجو در لیست..."
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-sm"
@@ -236,13 +239,21 @@ export default function Ledger({
                   <tr key={l.id} className="hover:bg-gray-50 dark:hover:bg-slate-800/30 transition-colors group">
                     <td className="px-8 py-5">
                       <div className="flex flex-col">
-                        <span className="font-mono text-sm font-bold text-gray-700 dark:text-slate-300" dir="ltr">{formatJalaliDateOnly(l.date, lang, true)}</span>
-                        <span className="text-[10px] text-gray-400 font-bold uppercase">{new Intl.DateTimeFormat(lang === 'dr' ? 'fa-AF' : 'en-US', { weekday: 'long' }).format(new Date(l.date))}</span>
+                        <span className="font-mono text-sm font-bold text-gray-700 dark:text-slate-300" dir="ltr">{formatJalaliDateOnly(l.date || l.createdAt || new Date().toISOString(), lang, true)}</span>
+                        <span className="text-[10px] text-gray-400 font-bold uppercase">
+  {(() => {
+    try {
+      const d = new Date(l.date || l.createdAt || new Date());
+      if (isNaN(d.getTime())) return '-';
+      return new Intl.DateTimeFormat(lang === 'dr' ? 'fa-AF' : 'en-US', { weekday: 'long' }).format(d);
+    } catch(e) { return '-'; }
+  })()}
+</span>
                       </div>
                     </td>
                     <td className="px-8 py-5">
                       <span className="px-3 py-1 rounded-lg text-[10px] font-black bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border dark:border-slate-700 uppercase tracking-tighter">
-                        {t[`dept${l.department?.charAt(0) + l.department?.slice(1).toLowerCase()}` as keyof typeof t] || l.department || t.deptGeneral}
+                        {l.department ? (t[`dept${l.department.charAt(0) + l.department.slice(1).toLowerCase()}` as keyof typeof t] || l.department) : t.deptGeneral}
                       </span>
                     </td>
                     <td className="px-8 py-5">
@@ -285,30 +296,30 @@ export default function Ledger({
             </div>
           </div>
         </div>
-        
+
         <div className="h-96 w-full">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={chartData} margin={{ top: 20, right: 20, left: 0, bottom: 20 }}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartColors.grid} />
-              <XAxis 
-                dataKey="name" 
-                stroke={chartColors.text} 
-                fontSize={11} 
-                tick={{fill: chartColors.text, fontWeight: 'bold'}} 
-                axisLine={false} 
+              <XAxis
+                dataKey="name"
+                stroke={chartColors.text}
+                fontSize={11}
+                tick={{fill: chartColors.text, fontWeight: 'bold'}}
+                axisLine={false}
                 tickLine={false}
                 dy={15}
               />
-              <YAxis 
-                stroke={chartColors.text} 
-                fontSize={11} 
-                tick={{fill: chartColors.text, fontWeight: 'bold'}} 
-                axisLine={false} 
+              <YAxis
+                stroke={chartColors.text}
+                fontSize={11}
+                tick={{fill: chartColors.text, fontWeight: 'bold'}}
+                axisLine={false}
                 tickLine={false}
                 tickFormatter={(value) => value.toLocaleString()}
               />
-              <Tooltip 
-                cursor={{ fill: theme === 'dark' ? '#1e293b' : '#f8fafc', radius: 12 }}
+              <Tooltip
+                cursor={{ fill: chartColors.grid, radius: 12 }}
                 contentStyle={{ 
                   backgroundColor: chartColors.tooltipBg, 
                   border: `1px solid ${chartColors.border}`, 

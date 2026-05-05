@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { 
-  Users, Search, Filter, Download, 
+import {
+  Users, Search, Filter, Download,
   MessageCircle, MapPin, TrendingUp, MoreVertical,
-  Phone, Mail, Calendar
+  Phone, Mail, Calendar, FileText
 } from 'lucide-react';
 import { exportToCSV } from '../../lib/utils';
 
@@ -11,13 +11,14 @@ interface CustomersProps {
   lang: 'dr' | 'ps' | 'en';
   t: any;
   theme: 'light' | 'dark';
+  onViewBills?: (customerName: string) => void;
 }
 
-export default function Customers({ customers, lang, t, theme }: CustomersProps) {
+export default function Customers({ customers, lang, t, theme, onViewBills }: CustomersProps) {
   const [searchTerm, setSearchTerm] = useState('');
 
-  const filteredCustomers = customers.filter(c => 
-    c.full_name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+  const filteredCustomers = customers.filter(c =>
+    c.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     c.whatsapp_number.includes(searchTerm)
   );
 
@@ -26,9 +27,10 @@ export default function Customers({ customers, lang, t, theme }: CustomersProps)
       c.full_name,
       c.whatsapp_number,
       c.address || '',
-      c.total_spent
+      c.total_spent,
+      c.balance || 0
     ]);
-    const headers = ['نام مشتری', 'شماره تماس', 'آدرس', 'مجموع خرید (AFN)'];
+    const headers = ['نام مشتری', 'شماره تماس', 'آدرس', 'مجموع خرید (AFN)', 'باقیمانده حساب (طلب شرکت)'];
     exportToCSV('customers_report', [headers, ...data]);
   };
 
@@ -46,7 +48,7 @@ export default function Customers({ customers, lang, t, theme }: CustomersProps)
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <button 
+          <button
             onClick={handleExport}
             className="bg-white dark:bg-slate-800 border dark:border-slate-700 text-gray-700 dark:text-gray-300 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-gray-50 transition-all"
           >
@@ -61,9 +63,9 @@ export default function Customers({ customers, lang, t, theme }: CustomersProps)
         <div className="lg:col-span-3 bg-white dark:bg-slate-900 p-4 rounded-2xl border dark:border-slate-800 shadow-sm">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-            <input 
-              type="text" 
-              placeholder={lang === 'dr' ? 'جستجوی نام یا شماره تماس...' : 'Search name or phone...'} 
+            <input
+              type="text"
+              placeholder={lang === 'dr' ? 'جستجوی نام یا شماره تماس...' : 'Search name or phone...'}
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-slate-800 border-none rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 text-sm dark:text-white"
@@ -89,6 +91,7 @@ export default function Customers({ customers, lang, t, theme }: CustomersProps)
                 <th className="px-6 py-4 text-start font-black text-xs text-gray-400 uppercase tracking-widest">{t.colWhatsApp}</th>
                 <th className="px-6 py-4 text-start font-black text-xs text-gray-400 uppercase tracking-widest">{t.colAddress}</th>
                 <th className="px-6 py-4 text-end font-black text-xs text-gray-400 uppercase tracking-widest">{t.colTotalSpent}</th>
+                <th className="px-6 py-4 text-end font-black text-xs text-gray-400 uppercase tracking-widest">باقیمانده حساب</th>
                 <th className="px-6 py-4 text-end font-black text-xs text-gray-400 uppercase tracking-widest">عملیات</th>
               </tr>
             </thead>
@@ -133,9 +136,22 @@ export default function Customers({ customers, lang, t, theme }: CustomersProps)
                       </div>
                     </td>
                     <td className="px-6 py-4 text-end">
+                      <div className="flex flex-col items-end">
+                        <span className={`font-black text-sm ${(c.balance || 0) > 0 ? 'text-red-500' : ((c.balance || 0) < 0 ? 'text-emerald-500' : 'text-gray-500')}`}>{(c.balance || 0).toLocaleString()} AFN</span>
+                        <span className="text-[10px] text-gray-400 uppercase font-bold">{(c.balance || 0) > 0 ? 'طلب شرکت' : ((c.balance || 0) < 0 ? 'طلب مشتری' : 'تسویه')}</span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-end">
                       <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg transition-all">
                           <Phone size={16} />
+                        </button>
+                        <button
+                          onClick={() => onViewBills && onViewBills(c.full_name)}
+                          className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-all"
+                          title="نمایش بیل‌ها و مستردات"
+                        >
+                          <FileText size={16} />
                         </button>
                         <button className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-white rounded-lg transition-all">
                           <MoreVertical size={16} />

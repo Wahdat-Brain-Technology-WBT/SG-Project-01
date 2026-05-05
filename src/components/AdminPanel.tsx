@@ -328,8 +328,8 @@ export default function AdminPanel() {
         const data = await res.json();
         showToast(getErrorMsg(data, 'Failed to save sale'), 'error');
       }
-    } catch (error) {
-      showToast('Error connecting to server', 'error');
+    } catch (error: any) {
+      showToast(error.message || 'Error connecting to server', 'error');
     } finally {
       setIsSaving(false);
     }
@@ -473,10 +473,11 @@ export default function AdminPanel() {
 
   useEffect(() => {
     localStorage.setItem('erp-theme', theme);
+    document.documentElement.classList.remove('dark', 'midnight');
     if (theme === 'dark') {
       document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
+    } else if (theme === 'midnight') {
+      document.documentElement.classList.add('dark', 'midnight');
     }
   }, [theme]);
 
@@ -546,14 +547,15 @@ export default function AdminPanel() {
     } catch (error: any) {
       clearTimeout(id);
       console.error(`[FETCH] Error: ${url} - ${error.message}`);
-      if (error.name === 'AbortError' || error.message.includes('aborted')) {
-        throw new Error('سیستم نتوانست با سرور بک‌اند ارتباط برقرار کند (Timeout). فایروال سرور فیزیکی را خاموش کرده یا پورت 8000 را باز کنید و مطمئن شوید سرور در حال اجراست.');
+      if (error.name === 'AbortError' || error.message.includes('aborted') || error.message.includes('Failed to fetch')) {
+        throw new Error('سیستم نتوانست با سرور بک‌اند ارتباط برقرار کند. لطفاً مطمئن شوید سرور (پای چارم) بدون مشکل در پورت 8000 روشن است و خطایی در ترمینال آن وجود ندارد.');
       }
       throw error;
     }
   };
 
   const [dbStatus, setDbStatus] = useState<{status: string, database: string} | null>(null);
+  const [selectedCustomerForOrders, setSelectedCustomerForOrders] = useState('');
 
   const checkDbStatus = async () => {
     if (!token) return;
@@ -568,7 +570,7 @@ export default function AdminPanel() {
         // Fallback for UI if backend endpoint doesn't exist yet
         setDbStatus({ status: 'connected', database: 'PostgreSQL (Local)' });
       }
-    } catch (err) {
+    } catch (error: any) {
       console.error('DB status check failed');
       setDbStatus({ status: 'connected', database: 'PostgreSQL (Local)' });
     }
@@ -643,6 +645,7 @@ export default function AdminPanel() {
         setToken(data.token);
         setRole(data.role);
         localStorage.setItem('admin_token', data.token);
+        localStorage.setItem('admin_role', data.role);
         showToast(lang === 'dr' ? 'خوش آمدید' : 'Welcome', 'success');
       } else {
         showToast(data.error || 'Invalid credentials', 'error');
@@ -772,7 +775,7 @@ export default function AdminPanel() {
         showToast(data.error || (lang === 'dr' ? 'خطا در ذخیره اطلاعات. لطفاً اتصال دیتابیس را بررسی کنید.' : 'Failed to save expense. Check DB connection.'), 'error');
       }
     } catch (error) {
-      showToast(lang === 'dr' ? 'خطا در ارتباط با سرور' : 'Error connecting to server', 'error');
+      showToast(error?.message || (lang === 'dr' ? 'خطا در ارتباط با سرور' : 'Error connecting to server'), 'error');
     } finally {
       setIsSaving(false);
     }
@@ -928,7 +931,7 @@ export default function AdminPanel() {
     .reduce((sum, l) => sum + (l.amount || 0), 0);
   const todayWeekday = new Intl.DateTimeFormat(lang === 'dr' ? 'fa-AF' : lang === 'ps' ? 'ps-AF' : 'en-US', { weekday: 'long' }).format(new Date());
 
-  const chartColors = theme === 'dark' ? {
+  const chartColors = (theme === 'dark' || theme === 'midnight') ? {
     text: '#94a3b8',
     grid: '#1e293b',
     tooltipBg: '#0f172a',
@@ -950,7 +953,7 @@ export default function AdminPanel() {
       <button
         onClick={() => {
           setActiveTab(id);
-          setIsSidebarOpen(false); // Hide sidebar on mobile when an item is clicked
+          setSidebarOpen(false); // Hide sidebar on mobile when an item is clicked
         }}
         className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
           activeTab === id ? 'bg-blue-600 text-white' : 'hover:bg-gray-100 dark:hover:bg-slate-800 text-gray-600 dark:text-gray-400'
@@ -966,8 +969,10 @@ export default function AdminPanel() {
     return (
       <div className={`min-h-screen bg-gray-50 dark:bg-slate-950 flex flex-col justify-center py-12 sm:px-6 lg:px-8 ${isRTL ? 'font-[Vazirmatn]' : ''}`} dir={isRTL ? 'rtl' : 'ltr'}>
         <div className="sm:mx-auto sm:w-full sm:max-w-md">
-          <div className="mx-auto w-16 h-16 bg-blue-700 rounded-xl flex items-center justify-center text-white font-bold text-3xl shadow-xl shadow-blue-600/30">
-            SG
+          <div className="mx-auto w-16 h-16 bg-blue-700 rounded-xl flex items-center justify-center text-white font-bold text-3xl shadow-xl shadow-blue-600/30 overflow-hidden">
+            {typeof window !== 'undefined' && localStorage.getItem('company_logo') ? (
+               <img src={localStorage.getItem('company_logo') as string} alt="Logo" className="w-full h-full object-contain bg-white" />
+            ) : "SG"}
           </div>
           <h2 className="mt-6 text-center text-3xl font-black text-gray-900 dark:text-white">
             {lang === 'dr' ? 'ورود به سیستم مدیریت' : lang === 'ps' ? 'سیسټم ته ننوتل' : 'Sign in to Admin Panel'}
@@ -1049,7 +1054,11 @@ export default function AdminPanel() {
       {/* Sidebar */}
       <aside className={`bg-white dark:bg-slate-900 border-e dark:border-slate-800 w-64 p-4 flex flex-col gap-6 fixed h-full z-20 transition-transform ${isSidebarOpen ? 'translate-x-0' : (isRTL ? 'translate-x-full' : '-translate-x-full')} lg:relative lg:translate-x-0`}>
         <div className="flex items-center gap-3 px-2">
-          <div className="w-10 h-10 bg-blue-700 rounded-xl flex items-center justify-center text-white font-bold text-xl">SG</div>
+          <div className="w-10 h-10 bg-blue-700 rounded-xl flex items-center justify-center text-white font-bold text-xl overflow-hidden shrink-0">
+            {typeof window !== 'undefined' && localStorage.getItem('company_logo') ? (
+               <img src={localStorage.getItem('company_logo') as string} alt="Logo" className="w-full h-full object-contain bg-white" />
+            ) : "SG"}
+          </div>
           <h1 className="font-bold text-lg text-gray-800 dark:text-white tracking-tight">Sheen Ghazy</h1>
         </div>
 
@@ -1073,7 +1082,7 @@ export default function AdminPanel() {
             <span className="font-medium">{t.viewWebsite}</span>
           </a>
           <button
-            onClick={() => { setToken(null); localStorage.removeItem('admin_token'); }}
+            onClick={() => { setToken(null); localStorage.removeItem('admin_token'); localStorage.removeItem('admin_role'); }}
             className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-red-600 hover:bg-red-50 transition-colors"
           >
             <LogOut size={20} />
@@ -1133,6 +1142,7 @@ export default function AdminPanel() {
               lang={lang}
               t={t}
               theme={theme}
+              initialSearchTerm={selectedCustomerForOrders}
             />
           )}
 
@@ -1161,6 +1171,10 @@ export default function AdminPanel() {
               lang={lang}
               t={t}
               theme={theme}
+              onViewBills={(customerName) => {
+                setSelectedCustomerForOrders(customerName);
+                setActiveTab('orders');
+              }}
             />
           )}
 
@@ -1305,8 +1319,8 @@ export default function AdminPanel() {
                   <ShoppingCart size={28} />
                 </div>
                 <div>
-                  <h3 className="font-black text-2xl text-gray-800 dark:text-white">{lang === 'dr' ? 'ثبت فروش مستقیم (فاکتور)' : 'Direct Sale (Invoice)'}</h3>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">صدور فاکتور رسمی و کسر هوشمند از موجودی گدام</p>
+                  <h3 className="font-black text-2xl text-gray-800 dark:text-white">{lang === 'dr' ? 'ثبت فروش مستقیم (بیل)' : 'Direct Sale (Invoice)'}</h3>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">صدور بیل رسمی و کسر هوشمند از موجودی گدام</p>
                 </div>
               </div>
               <button onClick={() => setIsAddSaleModalOpen(false)} className="p-3 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-2xl transition-all group">
@@ -1332,7 +1346,7 @@ export default function AdminPanel() {
                 </div>
                 <div className="flex items-center gap-3">
                   <div className="flex-1">
-                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">تاریخ فاکتور</p>
+                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">تاریخ بیل</p>
                     <p className="text-sm font-bold text-gray-700 dark:text-gray-300">{formatJalali(new Date().toISOString(), lang)}</p>
                   </div>
                   <button
@@ -1349,7 +1363,7 @@ export default function AdminPanel() {
                 <div className="flex justify-between items-center">
                   <h4 className="text-sm font-black text-gray-800 dark:text-white flex items-center gap-2">
                     <ShoppingBag size={18} className="text-blue-600" />
-                    اقلام فاکتور
+                    اقلام بیل
                   </h4>
                   <button
                     type="button"
@@ -1460,7 +1474,7 @@ export default function AdminPanel() {
                     })}
                     className="bg-blue-600 text-white font-black rounded-2xl px-16 py-5 hover:bg-blue-700 transition-all shadow-2xl shadow-blue-600/30 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100"
                   >
-                    {lang === 'dr' ? 'تایید و ثبت نهایی فاکتور' : 'Confirm & Finalize Invoice'}
+                    {lang === 'dr' ? 'تایید و ثبت نهایی بیل' : 'Confirm & Finalize Invoice'}
                   </button>
                   <p className="text-[10px] text-center text-gray-400 font-bold uppercase tracking-tighter">سیستم به صورت خودکار موجودی گدام را آپدیت می‌کند</p>
                 </div>

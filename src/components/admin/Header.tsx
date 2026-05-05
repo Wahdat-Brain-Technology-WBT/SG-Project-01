@@ -11,8 +11,8 @@ interface HeaderProps {
   dbStatus: any;
   notifications: any[];
   fetchData: () => void;
-  theme: 'light' | 'dark';
-  setTheme: (val: 'light' | 'dark') => void;
+  theme: string;
+  setTheme: (val: string) => void;
   lang: 'dr' | 'ps' | 'en';
   setLang: (val: 'dr' | 'ps' | 'en') => void;
   role: string;
@@ -30,11 +30,11 @@ export default function Header({
 
   return (
     <header className="bg-white dark:bg-slate-900 border-b dark:border-slate-800 h-20 flex items-center justify-between px-6 sticky top-0 z-10 shadow-sm">
-      
+
       {/* LEFT SIDE: Title + Notifications + Refresh */}
       <div className="flex items-center gap-6">
         <div className="flex items-center gap-4">
-          <button onClick={() => setSidebarOpen(!isSidebarOpen)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg dark:text-white transition-colors">
+          <button onClick={() => setSidebarOpen(!isSidebarOpen)} className="lg:hidden p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg dark:text-white transition-colors">
             <Menu size={24} />
           </button>
           <h2 className="font-black text-2xl text-slate-800 dark:text-white tracking-tight hidden sm:block">
@@ -43,7 +43,7 @@ export default function Header({
 
           {/* Notifications */}
           <div className="relative ms-2" ref={notifRef}>
-            <button 
+            <button
               onClick={() => setIsNotifOpen(!isNotifOpen)}
               className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full relative text-slate-500 dark:text-slate-400 transition-all active:scale-95"
             >
@@ -54,7 +54,7 @@ export default function Header({
                 </span>
               )}
             </button>
-            
+
             {isNotifOpen && (
               <div className="absolute top-16 start-0 w-80 bg-white dark:bg-slate-900 border dark:border-slate-800 shadow-2xl rounded-2xl p-4 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
                 <div className="flex justify-between items-center mb-3 border-b dark:border-slate-800 pb-2">
@@ -86,7 +86,7 @@ export default function Header({
           </div>
 
           {/* Refresh Button */}
-          <button 
+          <button
             onClick={() => fetchData()}
             className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full text-slate-500 dark:text-slate-400 transition-all active:rotate-180"
             title="Refresh Data"
@@ -98,7 +98,7 @@ export default function Header({
 
       {/* RIGHT SIDE: Weather, Clock, User Controls */}
       <div className="flex items-center gap-4">
-        
+
         {/* Real-Time Kabul Weather Widget */}
         <div className="hidden lg:block">
           <Weather />
@@ -125,13 +125,16 @@ export default function Header({
           </div>
         )}
 
-        <button 
-          onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
-          className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full text-slate-500 dark:text-slate-400 transition-colors"
+        <select
+          value={theme}
+          onChange={(e) => setTheme(e.target.value)}
+          className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 dark:text-slate-200 outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer transition-shadow"
           title={t.theme}
         >
-          {theme === 'light' ? <Moon size={20} /> : <Sun size={20} />}
-        </button>
+          <option value="light">{lang === 'dr' || lang === 'ps' ? 'روشن (سفید)' : 'Light'}</option>
+          <option value="dark">{lang === 'dr' || lang === 'ps' ? 'تاریک (آبی)' : 'Navy'}</option>
+          <option value="midnight">{lang === 'dr' || lang === 'ps' ? 'تمام‌تاریک' : 'Midnight'}</option>
+        </select>
 
         <select 
           value={lang} 
